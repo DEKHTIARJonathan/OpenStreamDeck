@@ -1,5 +1,40 @@
 # OpenStreamDeck contributor guide
 
+OpenStreamDeck puts desktop actions, AI workflows and local agent sessions on
+the N3. The architecture is a React editor over typed Tauri IPC, a Rust action
+engine shared by UI and hardware triggers, and a serialized device worker.
+
+Start with the [README](README.md) for the product, [ROADMAP](ROADMAP.md) for
+priorities and [verification matrix](docs/TEST-MATRIX.md) for evidence and
+remaining gaps. The rules below apply to human and agent contributions alike.
+
+## Engineering principles
+
+- **Keep one execution path.** UI requests and physical controls use the native
+  action engine. Test production orchestration through injected boundaries.
+- **Keep effects native.** React edits configuration and renders state. Rust
+  owns USB, processes, OS input, credentials and persistence.
+- **Keep one source of pixels.** Native preview and device frames come from the
+  same renderer, including glyphs, labels, rotation and JPEG encoding.
+- **Handle failures visibly.** Invalid imports, malformed reports and
+  unavailable adapters must produce useful errors. Preserve drafts and saved
+  state when an operation fails; add a regression for each corrected behavior.
+- **Match claims to evidence.** Implementation, fixture tests, API-level I/O and
+  physical observations establish different things. Document the limits.
+
+## Guide map
+
+| Working on                   | Read first                                                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Product or documentation     | [Product scope](#product-and-authorized-scope), [documentation policy](#keep-this-guide-current)                                     |
+| Setup or dependencies        | [Commands](#commands-and-dependency-management), [process ownership](#development-process-ownership)                                 |
+| Native or frontend code      | [Architecture](#architecture), [regression coverage](#required-regression-coverage)                                                  |
+| N3 packets or rendering      | [Protocol](#device-protocol-and-validation), [pixel fidelity](#pixel-fidelity-and-runtime-behavior)                                  |
+| Pages, settings or lifecycle | [Runtime behavior](#pixel-fidelity-and-runtime-behavior)                                                                             |
+| Providers or sessions        | [AI behavior](#agent-and-ai-behavior), [adapters](#adapter-correctness), [session identity](#agent-identity-activity-and-sub-agents) |
+| Shell workflows              | [Data boundary](#shell-workflow-data-boundary)                                                                                       |
+| Validation or release        | [Reporting](#validation-and-reporting), [CI and release gates](#review-ci-and-release-requirements)                                  |
+
 ## Product and authorized scope
 
 OpenStreamDeck is a local N3 controller and AI workflow deck, using Tauri 2,
@@ -88,17 +123,25 @@ tuning is separate.
 
 ## Architecture
 
-- `src/`: React UI, typed IPC client, physical N3 editor, workflows, agents.
-- `src-tauri/src/protocol.rs`: pure byte encoding/decoding; no OS or UI effects.
-- `device.rs`: vendor-interface HID lifecycle, serialized writes, display
-  rendering.
-- `actions.rs`: local action execution, workflow composition, cancellation.
-- `ai.rs`: provider adapters; API credentials stay in the OS credential store.
-- `agents.rs`: local Herdr/Codex interfaces and Claude lifecycle bridge.
-- `model.rs`, `store.rs`: configuration contracts, validation, persistence.
-- `docs/`: maintained guides, architecture, protocol and verification summaries.
-- `tests/fixtures/`: sanitized inputs consumed by automated tests.
-- `scripts/`: development and release utilities.
+| Boundary      | Location                                                                    | Responsibility                                                                                      |
+| ------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Editor        | `src/`                                                                      | React UI, typed IPC client, physical N3 editor, workflows, agents and settings                      |
+| Draft state   | `src/config-draft.ts`, `src/page-editor.ts`                                 | Reconcile native updates and saves without losing pending edits                                     |
+| Configuration | `model.rs`, `store.rs`                                                      | Configuration contracts, validation and persistence                                                 |
+| Packet format | `protocol.rs`                                                               | Pure byte encoding/decoding; no OS or UI effects                                                    |
+| Hardware      | `device.rs`, `diagnostics.rs`                                               | Vendor-interface HID lifecycle, serialized writes, display updates and explicit manual diagnostics  |
+| Pixels        | `artwork.rs`                                                                | Canonical renderer for native preview and device frames                                             |
+| Execution     | `engine.rs`, `actions.rs`, `process_tree.rs`                                | Local actions, workflow composition, cancellation and process cleanup                               |
+| Providers     | `ai.rs`                                                                     | Provider adapters; API credentials stay in the OS credential store                                  |
+| Sessions      | `agents.rs`, `codex_adapter.rs`, `focus.rs`                                 | Herdr/Codex interfaces, Claude lifecycle bridge and OS focus                                        |
+| Desktop       | `lib.rs`, `navigation.rs`, `settings.rs`, `applications.rs`, `macos_dev.rs` | IPC, lifecycle, window/tab state, login settings, application picker and macOS development identity |
+| Documentation | `docs/`                                                                     | Maintained guides, architecture, protocol and verification summaries                                |
+| Fixtures      | `tests/fixtures/`                                                           | Sanitized inputs consumed by automated tests                                                        |
+| Tooling       | `scripts/`                                                                  | Development and release utilities                                                                   |
+
+Rust filenames are relative to `src-tauri/src/`. See
+[ARCHITECTURE.md](docs/ARCHITECTURE.md) for execution and data flow. These are
+responsibility boundaries within the current workspace, not separate crates.
 
 Keep project source, maintained documentation and sanitized fixtures required by
 application tests in this repository. External checkouts, exploratory tools and
@@ -196,6 +239,8 @@ executed.
 
 ## Pixel fidelity and runtime behavior
 
+### Native artwork
+
 Preserve the React design the user approved. Render that design onto the N3. The
 native artwork renderer is the canonical source of frames for BOTH the hardware
 and native editor preview, including Lucide glyphs, labels, colors, dimensions,
@@ -206,6 +251,8 @@ their painted bounds with minimal margins and use large, bold, width-fitted
 labels; wrap to two lines and mark overflow instead of shrinking long labels
 into tiny text. The browser-only design preview is not evidence of hardware
 pixel fidelity.
+
+### Connection, tray and login
 
 Connect the N3 immediately at launch and retry discovery/reconnect
 automatically. Explicit Disconnect applies to the current process. With Menu bar
@@ -228,11 +275,15 @@ login startup behavior with injected boundaries; verify native lifecycle
 separately from browser fixtures. Login launch opens the GUI when tray mode is
 off and stays in the tray when it is on.
 
+### Performance evidence
+
 Keep memory claims measured. Record platform, build, connected hardware, active
 adapters/workflows, cold background versus closed window, and metric. macOS
 physical footprint and RSS are different; do not present main-process memory as
 the whole application if webview helpers remain. Do not extrapolate a macOS
 measurement into a verified Windows/Linux number.
+
+### Application picker
 
 Open App must be an application-picker flow. Selecting an application sets its
 launch target, name and full-key native icon together; never require manual path
@@ -240,6 +291,8 @@ entry or a separate icon upload for the normal flow. Keep URL/custom targets as
 an optional advanced path. Extract OS icons using structured arguments, never
 interpolate an application path into shell/script code. Test missing apps,
 extraction failures and atomic selection updates.
+
+### Agent dashboard
 
 The Agent dashboard action must foreground OpenStreamDeck and select its Agents
 tab, including when the window is minimized or its webview has been closed. Keep
@@ -251,11 +304,15 @@ creation/restoration and failures at the OS boundary, navigation startup races,
 and preservation of all six native frames and bindings. Record actual OS focus
 and physical display validation separately from those automated tests.
 
+### Sleep and wake
+
 Sleep must latch after a press and survive release reports (both `0` and `2`).
 Only a new press or dial rotation may wake the device, and that wake input must
 be consumed rather than also executing its binding. Resolve sleep-action toggles
 inside the serialized device worker; explicit wake remains idempotent. Cover all
 controls and release variants through the production input-routing policy.
+
+### Pages and configuration
 
 The Previous/Next hardware buttons (`button1`/`button2`) have fixed roles and
 must never be assignable. Resolve them before page bindings, including on empty
@@ -277,6 +334,8 @@ protect the last page and select a remaining neighbor. Apply it through the
 normal draft/save flow, preserving unrelated bindings and pending local edits.
 Report links to deleted pages without silently rewriting their targets. Cover
 cancel/Escape, stale targets, active-page selection and save/reload behavior.
+
+### Transient execution state
 
 Do not add an Activity tab or retain action/input history. Keep only active-job
 bookkeeping needed for execution/cancellation, and the latest input for the live
@@ -303,6 +362,22 @@ Update this file when the user changes a constraint or a regression reveals a
 missing engineering policy. Record the reusable rule and its verification, not a
 running transcript. Update affected documentation and tests in the same change.
 Keep unresolved work visible; do not silently redefine completion.
+
+### Public documentation
+
+Keep the README focused on product value, a tour of real capabilities, feature
+and architecture tables, setup and contribution paths. Use OpenStreamDeck's
+voice and actual implementation when adapting another project's documentation;
+retain required attribution for reused material. Reference projects do not
+change our product scope, stack, licensing or engineering rules.
+
+Maintain `ROADMAP.md` as a public product direction with implemented
+capabilities, next priorities and explicit boundaries. Link implementation
+claims to `docs/TEST-MATRIX.md`; distinguish pending validation from missing
+features. Update those descriptions with behavior changes. Do not invent
+screenshots, download availability, sponsorship channels, performance figures or
+platform certification. Check local documentation links and Markdown formatting
+when editing these guides. Keep private task tracking outside the repository.
 
 ### Temporary agent files
 
