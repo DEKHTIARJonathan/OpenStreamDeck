@@ -72,6 +72,12 @@ endpoint changes cannot redirect a stored credential.
 
 ### Establish release evidence and distribution trust
 
+The signed updater feed and build-time key configuration are prepared. Add the
+explicit in-app check, install and restart flow described in
+[the update design](docs/UPDATES.md#planned-in-app-behavior), then validate
+upgrades between packaged versions. See
+[updater evidence](docs/TEST-MATRIX.md#updater-preparation).
+
 Record successful hosted runs for all three operating systems and test every
 installer before claiming release readiness. Configure macOS Developer ID
 signing/notarization and Windows signing when distribution credentials are

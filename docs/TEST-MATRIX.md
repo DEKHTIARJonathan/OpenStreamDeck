@@ -6,7 +6,7 @@ OS focus, actual USB display orientation and real provider accounts require
 separate integration evidence. A passing fake effect does not prove its native
 implementation works.
 
-## Local validation (2026-10-19)
+## Local validation (2026-10-20)
 
 On macOS arm64, the frontend production build, 60 frontend unit tests and 20
 Playwright browser tests passed. All 85 Rust library tests and 2 macOS entry
@@ -227,6 +227,40 @@ selects the existing name, supports Cancel/Escape and Enter, rejects blank
 names, and leaves the rename pending until Save changes. Page IDs, bindings and
 navigation targets stay intact. Helper and browser coverage is in
 `src/page-editor.test.ts` and `tests/pages.spec.ts`.
+
+## Updater preparation
+
+The native updater plugin is registered with the build-time public key. All
+three signing environment variables are required by the native build. The build
+watches root `.env` and updater environment variables; CI updater packaging
+requires signing credentials. Release staging checks completeness, signature
+format and key IDs, then generates a multi-platform `latest.json` feed and
+checksums before draft publication. Workflow syntax is checked by actionlint and
+yamllint; no tests duplicate workflow or manifest configuration.
+
+These are build/release foundations, not a completed in-app updater. No update
+IPC, UI, download or install action is exposed. Hosted signing/publishing and
+upgrades between actual packaged versions have not been observed. Signature
+key-ID matching is not independent artifact signature verification. The
+[update design](UPDATES.md) lists the required runtime coverage and OS checks.
+
+Local macOS validation on 2026-10-20 used disposable keys and synthetic files
+outside the checkout. The compiled production build script rejected missing
+variables, blank keys and placeholders, accepted an explicitly empty password,
+loaded a temporary root dotenv file, honored environment precedence, hid
+malformed dotenv contents and emitted only the public key plus the expected
+rebuild directives. Release preflight also rejected missing signing variables
+and wrote only public configuration. Tauri's signer produced synthetic payload
+signatures consumed by production staging/feed generation; missing, duplicate,
+empty, malformed and wrong-key assets were rejected.
+
+A direct `cargo tauri build --debug --ci --bundles app` with temporary public
+configuration and exported disposable signing variables produced a macOS arm64
+app bundle, updater archive and signature. The archive passed cryptographic
+verification with `minisign-verify`; changing a payload byte caused verification
+to fail. The packaged executable contained the fixture public key and neither
+the fixture private key nor its password. This was a debug package, not the
+universal release matrix, and no application launch or installation was tested.
 
 ## Integration limitations
 

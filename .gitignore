@@ -13,3 +13,8 @@ playwright-report/
 src-tauri/gen/
 release-assets/
 release-notes.txt
+
+# Local build secrets; only the documented template belongs in Git.
+.env
+.env.*
+!.env.dist

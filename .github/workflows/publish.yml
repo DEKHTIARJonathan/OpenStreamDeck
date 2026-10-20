@@ -1,14 +1,23 @@
 ---
 name: Release
 run-name: Release ${{ github.ref_name }}
+
 'on':
   push:
     tags: ['v*']
+
 permissions:
   contents: read
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  # Tauri - Auto Update Configuration
+  TAURI_SIGNING_PUBLIC_KEY: >-
+    dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEYwQkMwQTZCMjgxNDAyMEMKUldRTUFoUW9hd3E4OEk0RXdMbnlXUzY0bXNGS05xd0lHc0V6T21ZYjdxN2xSWnZVRC9FMXdiZlEK
+
 jobs:
   version:
     runs-on: ubuntu-latest
@@ -43,7 +52,7 @@ jobs:
             bundle-root: target/release/bundle
           - platform: macos
             os: macos-latest
-            args: --target universal-apple-darwin --bundles dmg
+            args: --target universal-apple-darwin --bundles app,dmg
             bundle-root: target/universal-apple-darwin/release/bundle
           - platform: windows
             os: windows-latest
@@ -59,14 +68,26 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup
+        with:
+          # Cargo fingerprints environment inputs; never cache signing values.
+          save-cargo-cache: 'false'
+          configure-updater-checks: 'false'
       - name: Install both macOS architectures
         if: runner.os == 'macOS'
         run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
-      - name: Build installers
+      - name: Build signed installers and updater artifacts
+        shell: bash
         env:
           # Ad-hoc signing is not Developer ID signing or notarization.
           APPLE_SIGNING_IDENTITY: '-'
-        run: bun run tauri build --ci ${{ matrix.args }} -- --locked
+          TAURI_SIGNING_PRIVATE_KEY: >-
+            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: >-
+            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          bun scripts/release.ts configure
+          cargo tauri build --ci ${{ matrix.args }} \
+            --config "$RUNNER_TEMP/updater-config.json" -- --locked
       - name: Verify expected bundles and stage only release assets
         env:
           RELEASE_PLATFORM: ${{ matrix.platform }}
@@ -96,7 +117,10 @@ jobs:
           pattern: installers-*
           path: release-assets
           merge-multiple: true
-      - name: Verify all platforms and write SHA256SUMS
+      - name: Verify all platforms and write latest.json and SHA256SUMS
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
         run: bun scripts/release.ts verify
       - name: Publish complete release
         env:

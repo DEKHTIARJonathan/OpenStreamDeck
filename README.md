@@ -178,8 +178,13 @@ git clone https://github.com/DEKHTIARJonathan/OpenStreamDeck.git
 cd OpenStreamDeck
 make setup          # Install the development tools, including the Tauri CLI
 bun ci              # Install dependencies from bun.lock
+# Copy .env.dist to .env and configure the signing variables (see below).
 cargo tauri dev     # Start the native app and its frontend
 ```
+
+Native builds require the three signing environment variables. Follow
+[updater key setup](docs/UPDATES.md#configure-keys). CI uses signing secrets to
+produce the release updater artifacts.
 
 ### Make your first key
 

@@ -31,8 +31,6 @@ jobs:
         uses: j178/prek-action@v3.0.2
         with:
           install-only: true
-      - name: Install cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.26.0
       - name: Install prebuilt Rust advisory checker
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -56,7 +54,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
       - name: Build frontend and production native application
-        run: bun run tauri build --no-bundle --ci -- --locked
+        run: cargo tauri build --no-bundle --ci -- --locked
       - name: Build backend test binaries
         run: >-
           cargo test --workspace --all-targets --all-features --locked --no-run

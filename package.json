@@ -8,7 +8,6 @@
     "build": "tsc -b && vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "tauri": "tauri",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -19,14 +18,13 @@
     "lucide-react": "^0.468.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.3",
+    "@playwright/test": "^1.64.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.2.0",
     "typescript": "~5.9.3",
     "vite": "^7.3.7",
-    "vitest": "^4.1.12",
-    "@playwright/test": "^1.64.1"
+    "vitest": "^4.1.12"
   },
   "packageManager": "bun@1.4.2"
 }

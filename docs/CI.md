@@ -7,8 +7,14 @@ require hardware, agent applications or provider credentials.
 ## Local checks and pre-commit
 
 Install Bun **1.4.2** (also `.bun-version` and `packageManager`), Rust
-**1.96.0** (`rust-toolchain.toml`) and platform Tauri prerequisites. Install
-development tools through the shared Make target:
+**1.96.0** (`rust-toolchain.toml`) and platform Tauri prerequisites.
+
+Configure the native build's three signing environment variables using
+[`.env.dist`](../.env.dist) and [the key setup guide](UPDATES.md#configure-keys)
+before running Cargo checks. CI generates disposable signing variables for these
+checks; it does not require production credentials.
+
+Install development tools through the shared Make target:
 
 ```sh
 make setup
@@ -124,13 +130,15 @@ tests.
 
 The shared setup uses `dtolnay/rust-toolchain@v1` to install Rust/Cargo and the
 components declared in `rust-toolchain.toml`, including for release packaging.
-The Prek job installs prek with `j178/prek-action@v3.0.2` and cargo-binstall
-with `cargo-bins/cargo-binstall@v1.26.0`, then installs cargo-audit using the
-same binary installation approach as `make setup`. Missing cargo-audit binaries
-fail installation instead of falling back to compilation. The local setup target
-and prek hook configuration are unchanged. These tools use their current
-releases without CI version overrides. Rust and Bun versions come from
-`rust-toolchain.toml` and `.bun-version`.
+The shared setup installs cargo-binstall with
+`cargo-bins/cargo-binstall@v1.26.0` and installs the native Tauri CLI with it.
+Native builds invoke `cargo tauri` directly. The Prek job installs prek with
+`j178/prek-action@v3.0.2`, then installs cargo-audit using the same binary
+installation approach as `make setup`. Missing tool binaries fail installation
+instead of falling back to compilation. The local setup target and prek hook
+configuration are unchanged. These tools use their current releases without CI
+version overrides. Rust and Bun versions come from `rust-toolchain.toml` and
+`.bun-version`.
 
 Only Cargo is cached between runs. The shared
 [toolchain action](../.github/actions/setup/action.yml) uses a common
@@ -143,10 +151,12 @@ Prek job and matrix start without saved artifacts; subsequent runs can reuse the
 populated cache. Cache misses always fall back to compilation.
 
 Release packaging uses the same runners, Cargo settings and shared cache.
-Release and test profiles still require distinct compiler outputs; both are
-retained in the Cargo target cache. macOS universal packaging also compiles both
-target architectures. No frontend dependency or output cache is added; frontend
-builds remain inexpensive and run once per matrix job.
+Signing jobs restore the cache but never save it, so production signing
+environment fingerprints cannot enter the shared cache. Release and test
+profiles still require distinct compiler outputs; both are retained in the Cargo
+target cache. macOS universal packaging also compiles both target architectures.
+No frontend dependency or output cache is added; frontend builds remain
+inexpensive and run once per matrix job.
 
 All platforms install dependencies with `bun ci`. Tests need no N3, installed
 agent application, API key or test account. Workflow actions and remote hook
@@ -171,10 +181,11 @@ The release sequence is:
 1. Validate the tag and versions.
 2. Run Linux Prek, then the three-platform Build and Test matrix on the tagged
    revision.
-3. Build Linux DEB/AppImage, macOS universal DMG (Apple Silicon + Intel), and
-   Windows MSI/NSIS installers. All matrix jobs must succeed.
-4. Gather only expected installer extensions, require every format and reject
-   empty files, then generate `SHA256SUMS`.
+3. Build Linux DEB/AppImage, macOS universal app/DMG (Apple Silicon + Intel),
+   and Windows MSI/NSIS installers, including signed updater payloads and `.sig`
+   sidecars. All matrix jobs must succeed.
+4. Require every expected format, reject duplicates, empty files and signatures
+   with mismatched key IDs, then generate `latest.json` and `SHA256SUMS`.
 5. Create a draft, upload all assets, and publish only after successful upload.
 
 Only the final publication job can write repository contents. Installer jobs
@@ -188,10 +199,12 @@ tag.
 macOS bundles use ad-hoc signing; **Developer ID signing and notarization are
 not configured**. Windows installers are unsigned. Operating systems may show
 untrusted-publisher warnings. Distribution signing requires separate certificate
-configuration. There is no in-app updater or updater-signature feed yet. Linux
-packages are built on the `ubuntu-latest` runner image; deployment on other
-distributions requires separate validation. No proprietary vendor drivers or
-firmware are bundled. macOS/Windows use the platform HID APIs. The Linux DEB
+configuration. The signed updater feed is prepared; in-app check/install
+controls are planned. Configure the workflow public key and two Actions secrets
+described in [UPDATES.md](UPDATES.md#github-actions) before pushing a release
+tag. Linux packages are built on the `ubuntu-latest` runner image; deployment on
+other distributions requires separate validation. No proprietary vendor drivers
+or firmware are bundled. macOS/Windows use the platform HID APIs. The Linux DEB
 installs the N3 udev rule; AppImage users must install it themselves:
 
 ```sh

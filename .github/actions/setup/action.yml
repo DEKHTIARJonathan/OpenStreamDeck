@@ -7,6 +7,10 @@ inputs:
     description: Save compilation cache after the job; false restores only
     required: false
     default: 'true'
+  configure-updater-checks:
+    description: Supply disposable updater variables for ordinary CI checks
+    required: false
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -44,3 +48,36 @@ runs:
     - name: Install locked frontend dependencies
       shell: bash
       run: bun ci
+    - name: Install cargo-binstall
+      uses: cargo-bins/cargo-binstall@v1.26.0
+    - name: Install native Tauri CLI
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: >-
+        cargo binstall --locked --no-confirm --disable-strategies compile
+        tauri-cli
+    - name: Configure disposable updater environment for checks
+      if: inputs.configure-updater-checks == 'true'
+      shell: bash
+      run: |
+        updater_dir=$(mktemp -d "$RUNNER_TEMP/updater-check.XXXXXX")
+        updater_key="$updater_dir/check.key"
+        updater_log="$updater_dir/generate.log"
+        cleanup_updater_key() {
+          rm -f "$updater_key" "$updater_key.pub" "$updater_log"
+          rmdir "$updater_dir"
+        }
+        trap cleanup_updater_key EXIT
+        if ! cargo tauri signer generate --ci -p ci-disposable \
+          -w "$updater_key" > "$updater_log" 2>&1; then
+          echo "Failed to generate disposable updater key." >&2
+          exit 1
+        fi
+        updater_public_key=$(tr -d '\r\n' < "$updater_key.pub")
+        updater_private_key=$(tr -d '\r\n' < "$updater_key")
+        {
+          echo "TAURI_SIGNING_PUBLIC_KEY=$updater_public_key"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$updater_private_key"
+          echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=ci-disposable"
+        } >> "$GITHUB_ENV"

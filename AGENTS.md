@@ -67,6 +67,40 @@ claim physical input verification based on injected software events.
 
 ## Commands and dependency management
 
+### Updater environment and secrets
+
+Both `.env` and `.env.dist` live at the **repository root**, alongside
+`package.json` and `Cargo.toml`. Never place or look for these files in the
+user's home directory or in `src-tauri/`. From the repository root, the user
+creates their private configuration with `cp .env.dist .env`.
+
+**Agents must NEVER read `.env` or other private dotenv files**, including with
+search, diff, logging, diagnostic tools or indirect commands that print their
+contents. Do not edit or overwrite them. Only `.env.dist` is safe to inspect.
+Configure signing with key values in the three environment variables below; do
+not introduce named signing-key files. Build code may load the root `.env` at
+build time without logging its contents; this is not permission for an agent to
+inspect it. Validate with synthetic environment values and temporary fixtures
+outside the checkout.
+
+Native builds require all three environment variables:
+`TAURI_SIGNING_PUBLIC_KEY`, `TAURI_SIGNING_PRIVATE_KEY` and an explicitly set
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (empty is valid for an unencrypted key).
+Only the public verification key may be embedded. Use `cargo tauri dev` and
+`cargo tauri build` directly. Do not add a Bun Tauri script or a build-command
+wrapper. Rust loads the root `.env` variables; CI supplies signing credentials
+directly to the CLI environment. Fail clearly without printing values. Track the
+root `.env` and these variables with Cargo rebuild directives. Keep private
+keys/passwords out of frontend environment prefixes, generated configuration,
+release artifacts and logs. Ordinary CI uses disposable signing variables; only
+tag packaging receives production signing secrets. Disable disposable signing
+setup for tag packaging so it cannot overwrite the release public key. Build,
+staging and publication must use the same public verification key. Release
+packaging must not save its Cargo cache because Cargo fingerprints environment
+inputs.
+
+Document only the supported build/update flow, without unused legacy methods.
+
 Run commands from the repository root. Use Bun for all JavaScript dependencies;
 do not use npm, pnpm, yarn, or add their lockfiles. The root `package.json` is
 Bun's standard manifest (not `packages.json`). Commit `bun.lock` and the root

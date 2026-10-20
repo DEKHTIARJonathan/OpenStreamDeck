@@ -1,0 +1,2 @@
+# The native Rust build loads the root .env explicitly.
+env = false
