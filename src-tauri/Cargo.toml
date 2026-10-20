@@ -43,6 +43,8 @@ uuid = { version = "1", features = ["v4"] }
 resvg = "0.48"
 
 [dev-dependencies]
+tokio = { version = "1", features = ["test-util"] }
+tauri = { version = "2", features = ["test"] }
 tempfile = "3"
 
 [target.'cfg(unix)'.dependencies]

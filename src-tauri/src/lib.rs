@@ -13,8 +13,10 @@ pub mod navigation;
 #[cfg(windows)]
 pub mod process_tree;
 pub mod protocol;
+mod release_notes;
 mod settings;
 pub mod store;
+mod updates;
 
 use model::*;
 use std::{
@@ -44,6 +46,7 @@ pub struct AppState {
     pub agent_frame: Mutex<String>,
     pub navigation: Mutex<navigation::Navigation>,
     pub settings_error: Mutex<Option<String>>,
+    pub update_installing: AtomicBool,
 }
 impl AppState {
     fn new(dir: PathBuf, config: Config, tx: SyncSender<device::DeviceCommand>) -> Self {
@@ -66,7 +69,43 @@ impl AppState {
             agent_frame: Mutex::new(String::new()),
             navigation: Mutex::new(navigation::Navigation::default()),
             settings_error: Mutex::new(None),
+            update_installing: AtomicBool::new(false),
         }
+    }
+
+    pub(crate) fn begin_update_install(&self) -> Result<(), String> {
+        let active = self.active.lock().unwrap();
+        // The binding map retains only the latest overlapping run. The
+        // cancellation registry retains every run until its future completes.
+        // Match action registration's active -> cancellations lock order.
+        if !active.is_empty() || !self.cancellations.lock().unwrap().is_empty() {
+            return Err(
+                "Wait for running actions and workflows to finish before installing.".into(),
+            );
+        }
+        self.update_installing.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    fn save_configuration(
+        &self,
+        config: Config,
+        login: &impl settings::LoginRegistration,
+    ) -> Result<bool, String> {
+        // Serialize persistence with installation, including saves queued before
+        // the frontend receives the update progress event.
+        let _active = self.active.lock().unwrap();
+        if self.update_installing.load(Ordering::SeqCst) {
+            return Err(
+                "An update is in progress. Changes cannot be saved until it finishes.".into(),
+            );
+        }
+        let mut current = self.config.lock().unwrap();
+        let brightness_changed = current.brightness != config.brightness;
+        settings::save(&self.dir, &mut current, config, login)?;
+        *self.settings_error.lock().unwrap() = None;
+        self.agent_display.store(false, Ordering::Relaxed);
+        Ok(brightness_changed)
     }
 
     pub fn send(&self, command: device::DeviceCommand) -> Result<(), String> {
@@ -87,10 +126,12 @@ struct Snapshot {
     adapter_errors: Vec<String>,
     data_dir: String,
     settings_error: Option<String>,
+    update: updates::Status,
 }
 #[tauri::command]
-fn snapshot(state: tauri::State<AppState>) -> Snapshot {
+fn snapshot(app: tauri::AppHandle, state: tauri::State<AppState>) -> Snapshot {
     Snapshot {
+        update: app.state::<Arc<updates::Service>>().status(),
         navigation: state.navigation.lock().unwrap().clone(),
         config: state.config.lock().unwrap().clone(),
         device: state.device.lock().unwrap().clone(),
@@ -110,18 +151,8 @@ fn save_config(
     state: tauri::State<AppState>,
     config: Config,
 ) -> Result<(), String> {
-    config.validate()?;
-    let mut current = state.config.lock().unwrap();
-    let brightness_changed = current.brightness != config.brightness;
-    settings::save(
-        &state.dir,
-        &mut current,
-        config.clone(),
-        &settings::NativeLogin(&app),
-    )?;
-    drop(current);
-    *state.settings_error.lock().unwrap() = None;
-    state.agent_display.store(false, Ordering::Relaxed);
+    let brightness_changed =
+        state.save_configuration(config.clone(), &settings::NativeLogin(&app))?;
     // Persistence succeeded. A busy device queue must not turn this into a
     // misleading failed save or hide the authoritative config update.
     let _ = app.emit("config", &config);
@@ -355,6 +386,7 @@ pub fn run() {
                     .map_err(std::io::Error::other)?;
             let (tx, rx) = std::sync::mpsc::sync_channel(64);
             app.manage(AppState::new(dir, config, tx));
+            updates::setup(app.handle());
             *app.state::<AppState>().settings_error.lock().unwrap() = settings_error;
             let handle = app.handle().clone();
             std::thread::Builder::new()
@@ -468,9 +500,15 @@ pub fn run() {
                 #[cfg(target_os = "macos")]
                 app.set_activation_policy(tauri::ActivationPolicy::Accessory);
             }
+            updates::start_scheduler(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            release_notes::open_release_link,
+            updates::update_status,
+            updates::check_updates,
+            updates::skip_update,
+            updates::install_update,
             snapshot,
             set_view,
             render_keys,
@@ -494,12 +532,28 @@ pub fn run() {
         .expect("OpenStreamDeck startup failed")
         .run(|app, event| match event {
             tauri::RunEvent::ExitRequested { code, api, .. } => {
-                if settings::keep_running_after_exit(
+                if app
+                    .state::<Arc<updates::Service>>()
+                    .status()
+                    .blocks_exit(code)
+                {
+                    api.prevent_exit();
+                    let _ = app.emit(
+                        "action_error",
+                        "The update is in progress. OpenStreamDeck will restart automatically.",
+                    );
+                } else if settings::keep_running_after_exit(
                     app.state::<AppState>().config.lock().unwrap().menu_bar_only,
                     code,
                 ) {
                     api.prevent_exit();
                 }
+            }
+            tauri::RunEvent::WindowEvent {
+                event: tauri::WindowEvent::CloseRequested { api, .. },
+                ..
+            } if app.state::<Arc<updates::Service>>().status().applying() => {
+                api.prevent_close();
             }
             tauri::RunEvent::WindowEvent {
                 label,

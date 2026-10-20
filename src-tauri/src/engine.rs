@@ -332,6 +332,7 @@ mod tests {
                     id: format!("empty-{n}"),
                     name: format!("Page {n}"),
                     bindings: Default::default(),
+                    application: None,
                 })
                 .collect();
             // Custom/disabled actions must not override either arrow.
@@ -589,6 +590,7 @@ mod tests {
             id: "second".into(),
             name: "second".into(),
             bindings: Default::default(),
+            application: None,
         });
         switch_page(&mut w, "previous").unwrap();
         assert_eq!(w.active_page, "second");

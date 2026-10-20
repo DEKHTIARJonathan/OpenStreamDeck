@@ -18,6 +18,7 @@ const fixture = `
   window.__keyError = '';
   export async function call(command, args) {
     if (command === 'snapshot') return { navigation, config, device:{connected:false,serial:'',product:'N3',message:'N3 not connected',packets_in:0,packets_out:0,sleeping:false},agents:[],adapter_errors:[],data_dir:'/fixture/OpenStreamDeck',settings_error:sessionStorage.getItem('settings-error') };
+    if (command === 'update_status') return {revision:0,phase:'idle',current_version:'0.1.0'};
     if (command === 'render_keys') return [];
     if (command === 'set_view') return navigation = {view:args.view, revision:navigation.revision+1};
     if (command === 'save_config') {

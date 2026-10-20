@@ -109,6 +109,101 @@ export function validateVersion(
   }
 }
 
+function changelogNotes(changelog: string, tag: string): string {
+  // Only level-two headings delimit releases; level-three category headings
+  // remain in the notes. Headings in fenced examples/comments are not releases.
+  const sections: { heading: string; body: string[] }[] = [];
+  let section: (typeof sections)[number] | undefined;
+  let fence: string | undefined;
+  let comment = false;
+  for (const raw of changelog.replace(/\r\n/g, "\n").split("\n")) {
+    if (fence) {
+      section?.body.push(raw);
+      const close = raw.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/)?.[1];
+      if (close && close[0] === fence[0] && close.length >= fence.length)
+        fence = undefined;
+      continue;
+    }
+    let line = "";
+    let cursor = 0;
+    while (cursor < raw.length) {
+      if (!comment && raw[cursor] === "`") {
+        const ticks = raw.slice(cursor).match(/^`+/)![0];
+        const closing = [
+          ...raw.slice(cursor + ticks.length).matchAll(/`+/g),
+        ].find((match) => match[0].length === ticks.length);
+        if (closing) {
+          const end = cursor + ticks.length + closing.index! + ticks.length;
+          line += raw.slice(cursor, end);
+          cursor = end;
+          continue;
+        }
+        line += ticks;
+        cursor += ticks.length;
+        continue;
+      }
+      if (!comment && !raw.startsWith("<!--", cursor)) {
+        line += raw[cursor++];
+        continue;
+      }
+      const delimiter = raw.indexOf(comment ? "-->" : "<!--", cursor);
+      if (delimiter < 0) {
+        if (!comment) line += raw.slice(cursor);
+        break;
+      }
+      if (!comment) line += raw.slice(cursor, delimiter);
+      cursor = delimiter + (comment ? 3 : 4);
+      comment = !comment;
+    }
+    const opening = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+    if (opening && !(opening[1][0] === "`" && opening[2].includes("`"))) {
+      fence = opening[1];
+      section?.body.push(line);
+      continue;
+    }
+    const heading = line.match(/^ {0,3}##[ \t]+(.+?)\s*$/)?.[1];
+    if (heading) {
+      section = { heading, body: [] };
+      sections.push(section);
+    } else section?.body.push(line);
+  }
+  const matching = sections.filter(({ heading }) => {
+    const name = heading.match(/^(v\S+)(?:[ \t]|$)/)?.[1];
+    return name === tag;
+  });
+  if (matching.length !== 1) {
+    throw new Error(
+      `CHANGELOG.md must contain exactly one release section for ${tag}. Move its Unreleased entries under "## ${tag} - YYYY-MM-DD" before tagging.`,
+    );
+  }
+  const { heading, body } = matching[0];
+  const date = heading.match(/ - (\d{4}-\d{2}-\d{2})$/)?.[1];
+  const parsed = date ? new Date(`${date}T00:00:00Z`) : null;
+  if (
+    !date ||
+    heading !== `${tag} - ${date}` ||
+    !parsed ||
+    !Number.isFinite(parsed.getTime()) ||
+    parsed.toISOString().slice(0, 10) !== date
+  ) {
+    throw new Error(
+      `CHANGELOG.md section for ${tag} must have a valid YYYY-MM-DD release date.`,
+    );
+  }
+  const notes = body.join("\n").trim();
+  const content = notes
+    .split("\n")
+    .filter((line) => !/^#{1,6}(?:\s|$)/.test(line.trim()))
+    .join("\n")
+    .replace(/[\s#*_\-+>`~[\]()]/g, "");
+  if (!content) {
+    throw new Error(
+      `CHANGELOG.md section for ${tag} is empty. Add customer-facing release notes before tagging.`,
+    );
+  }
+  return notes;
+}
+
 export async function checkVersion() {
   const pkg = await Bun.file("package.json").json();
   const config = await Bun.file("src-tauri/tauri.conf.json").json();
@@ -120,6 +215,10 @@ export async function checkVersion() {
     process.env.RELEASE_REF_TYPE || "",
     [pkg.version, cargo.package.version, config.version],
   );
+  const changelog = Bun.file("CHANGELOG.md");
+  if (!(await changelog.exists()))
+    throw new Error("CHANGELOG.md is required to publish a release.");
+  return changelogNotes(await changelog.text(), process.env.RELEASE_TAG!);
 }
 
 export function expectedAssets(platform: Platform | "all", names: string[]) {
@@ -184,7 +283,7 @@ export async function stage(
 }
 
 async function updaterManifest(names: string[], output: string) {
-  await checkVersion();
+  const notes = await checkVersion();
   const repository = process.env.GITHUB_REPOSITORY || "";
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository))
     throw new Error("GITHUB_REPOSITORY must identify the release repository.");
@@ -208,7 +307,7 @@ async function updaterManifest(names: string[], output: string) {
   }
   return {
     version: tag.slice(1),
-    notes: `OpenStreamDeck ${tag}. See the GitHub release notes for details.`,
+    notes,
     pub_date: new Date().toISOString(),
     platforms,
   };
@@ -237,11 +336,11 @@ export async function verify(output = "release-assets") {
 }
 
 async function publish() {
-  await checkVersion();
   const names = await verify();
   const tag = process.env.RELEASE_TAG!;
-  const notes = `OpenStreamDeck ${tag}\n\nInstallers: Linux DEB/AppImage, macOS universal DMG (Apple Silicon and Intel), Windows MSI/NSIS.\n\nSigned updater artifacts, .sig files and latest.json accompany the installers. The macOS .app.tar.gz is the universal updater payload; Linux updater payloads cover DEB and AppImage. In-app update controls are planned; this release prepares the signed feed.\n\nmacOS is ad-hoc signed, not notarized. Windows installers have no Authenticode signature. Updater signatures are separate from OS distribution signing. These builds do not include vendor firmware or proprietary drivers. Linux USB access requires the bundled udev rule (automatically installed by the DEB; see docs/CI.md for AppImage setup).\n\nSHA256SUMS covers installers, updater artifacts, signatures and latest.json. Automated tests use simulated device I/O and do not certify physical hardware behavior.\n`;
-  await writeFile("release-notes.txt", notes);
+  // Use the exact text embedded in the verified updater feed for the release page.
+  const { notes } = await Bun.file("release-assets/latest.json").json();
+  await writeFile("release-notes.txt", `${notes}\n`);
   function gh(args: string[]) {
     const result = Bun.spawnSync(["gh", ...args], {
       stdout: "inherit",

@@ -30,13 +30,21 @@ pub(crate) fn load(
 ) -> Result<(Config, Option<String>), String> {
     let mut config = store::load(dir)?;
     // Read-only: respect login-item changes made outside OpenStreamDeck.
-    let error = match login.is_enabled() {
+    let mut error = match login.is_enabled() {
         Ok(enabled) => {
             config.launch_at_login = enabled;
             None
         }
         Err(error) => Some(format!("Could not read launch at login: {error}")),
     };
+    if config.page_switching.is_some() || config.pages.iter().any(|page| page.application.is_some())
+    {
+        let warning = "Application-based page switching is unavailable in this build. Your saved page-switching settings and application associations are preserved.";
+        error = Some(match error {
+            Some(error) => format!("{error}. {warning}"),
+            None => warning.into(),
+        });
+    }
     Ok((config, error))
 }
 
@@ -152,6 +160,42 @@ mod tests {
             }
             Ok(())
         }
+    }
+
+    #[test]
+    fn startup_preserves_application_page_settings_through_save_and_reload() {
+        // Public synthetic data matching the other current-version writer.
+        // Exercise the same loader called by Tauri's setup hook.
+        let bytes = include_bytes!("../../tests/fixtures/config-application-pages.json");
+        let original: serde_json::Value = serde_json::from_slice(bytes).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.json");
+        std::fs::write(&path, bytes).unwrap();
+        let login = Login::default();
+
+        let (mut current, warning) = load(dir.path(), &login)
+            .expect("startup must accept saved version-2 application-page settings");
+        assert!(warning.unwrap().contains("page switching is unavailable"));
+        assert_eq!(std::fs::read(&path).unwrap(), bytes);
+        assert_eq!(serde_json::to_value(&current).unwrap(), original);
+        assert!(login.writes.borrow().is_empty());
+
+        // Model an ordinary editor save through the JSON IPC boundary.
+        let mut ipc = serde_json::to_value(&current).unwrap();
+        ipc["brightness"] = serde_json::json!(42);
+        let next = Config::decode(&serde_json::to_vec(&ipc).unwrap()).unwrap();
+        save(dir.path(), &mut current, next, &login).unwrap();
+        let (reloaded, _) = load(dir.path(), &login).unwrap();
+        assert_eq!(serde_json::to_value(&reloaded).unwrap(), ipc);
+        assert_eq!(
+            std::fs::read(dir.path().join("config.backup.json")).unwrap(),
+            bytes
+        );
+        login.fail_read.set(true);
+        let (_, warning) = load(dir.path(), &login).unwrap();
+        let warning = warning.unwrap();
+        assert!(warning.contains("Could not read launch at login"));
+        assert!(warning.contains("page switching is unavailable"));
     }
 
     #[test]

@@ -52,7 +52,11 @@ On macOS, development launches must display OpenStreamDeck in the Dock too. The
 debug entry point re-execs inside a lightweight app bundle under the target
 directory before Tauri starts. Preserve the PID, arguments and stdio so Cargo
 reload and termination still work. Verify the running OS application name;
-embedded plist contents alone do not prove the Dock label is correct.
+embedded plist contents alone do not prove the Dock label is correct. Use a
+regular file/hard link for the development bundle executable, never a symlink:
+Tauri rejects symlinked executable paths when initializing the updater. Refresh
+the hard link when Cargo replaces the binary and cover the bundled subprocess
+with Tauri's actual starting-executable validation.
 
 The UI is a modern control deck. Include OS/application shortcuts, media
 controls, pages, macros, artwork, AI workflows and Claude Code/Codex/Herdr
@@ -100,6 +104,43 @@ packaging must not save its Cargo cache because Cargo fingerprints environment
 inputs.
 
 Document only the supported build/update flow, without unused legacy methods.
+Keep update checks, downloads, verification and installation native. Check once
+on startup and six hours after the last completed automatic or manual attempt,
+including while the GUI is closed. Persist the last-check timestamp and skipped
+version atomically in app data, separately from editable configuration.
+Automatic availability brings the GUI forward and restores a native-backed
+Update Now / Skip this Update notice. The update notice must offer only these
+two choices: no close button, Escape dismissal or backdrop dismissal. Keep it
+open until a choice succeeds, and defer further checks while the choice is
+pending. Preserve unsaved edits; if they block installation, explain that
+skipping lets the user continue editing and install later from Settings.
+Skipping suppresses automatic prompts and foregrounding for that exact version
+across restarts; a different version prompts again. Manual checks may still
+install a skipped version. Test timers with virtual time, foregrounding through
+the window boundary, persistence failures, startup hydration, skipped/new
+versions and serialization with active installations. One **Install Update**
+click authorizes download, verification, installation and automatic restart
+without confirmation or cancel controls. Keep the complete sequence native and
+independent of the webview lifetime. Reject unsaved drafts and active workflows
+before downloading; block edits, new workflows and ordinary close/quit through
+automatic restart. Permit the updater’s own restart exit. Serialize update
+requests and release the work gate on failure. Check every running action in the
+cancellation registry, including overlapping runs of the same binding. Serialize
+configuration saves with installation so queued IPC cannot persist changes or
+alter login registration during an update. Development builds use
+`http://127.0.0.1:8080/latest.json`; release builds use the configured GitHub
+feed. Development supports real, one-click installation from the local feed. On
+macOS, replace the generated development `.app` bundle and restart that bundle;
+keep the Cargo executable separate so a later Cargo launch can restore the
+source-built version. Test the complete download/install/restart orchestration,
+failure recovery, serialization and development installation policy with
+injected installers. Both use the configured signing public key; no demo updater
+button or embedded fixture server. Keep synthetic feeds/keys test-only.
+Production feeds, payloads and redirects use HTTPS; development permits HTTP
+payloads and redirects only on localhost. Test production orchestration with
+loopback responses and injected installer/restart boundaries; automated tests
+must never replace an application. Report packaged OS upgrade validation
+separately from download/signature tests.
 
 Run commands from the repository root. Use Bun for all JavaScript dependencies;
 do not use npm, pnpm, yarn, or add their lockfiles. The root `package.json` is
@@ -366,8 +407,17 @@ Use one flat page collection with `pages` and `active_page`. Saving and JSON
 import/export operate on the app's page and settings configuration. Do not
 introduce a separate workspace or profile layer. Keep only current features:
 delete code, tests, fixtures and documentation together when removing a feature.
-Support only the current configuration format. Cover configuration round trips,
+Preserve locally imported optional fields through concurrent native updates,
+including property additions and removals. Cover configuration round trips,
 validation, normal save backups and preservation of unknown extension actions.
+Current-format application-page settings (`page_switching` and page
+`application`) can be written by another build sharing the app-data directory.
+Preserve these fields through native startup, IPC, editing, import/export and
+save/reload even when this build cannot execute page switching; show that
+limitation at startup. Never fix compatibility by dropping fields or resetting
+saved configuration. Reproduce startup regressions through `settings::load` with
+public synthetic fixtures before fixing them, and assert subsequent saves retain
+the complete configuration and original backup.
 
 Page deletion must be visible beside the page tabs, confirm the named target,
 protect the last page and select a remaining neighbor. Apply it through the
@@ -538,3 +588,42 @@ Windows, the child program must read its environment directly; expanding
 not execute model-generated commands implicitly. Test attempted metacharacter
 input through the production launcher, and test template rejection before any
 effect is dispatched.
+
+# Changelog Maintenance
+
+Before completing any product change, agents must assess whether it represents a
+meaningful customer-facing feature, fix, performance improvement, or other
+notable outcome. When it does, ensure the appropriate section under
+`CHANGELOG.md` `Unreleased` is updated with the new feature.
+
+The changelog is public marketing material and must:
+
+- Include only the most meaningful customer-facing changes.
+- Use high-level language with the absolute minimum technical detail.
+- Group entries under conventional headings such as `Features`, ` UI/UX`,
+  `Fixes`, and `Performance`.
+- Replace an earlier entry when the same change evolves again before release, so
+  only its final outcome remain.
+- Omit routine refactors, dependency updates, CI changes, tests, documentation,
+  and implementation details unless they materially change the customer
+  experience.
+- Only update `CHANGELOG.md` if the change is visible to the customer,
+  everything else should be internal and not documented in the `CHANGELOG.md`.
+
+When creating a version tag, move the applicable `Unreleased` entries into a new
+version section dated `YYYY-MM-DD`, then leave an empty `Unreleased` section at
+the top for future work.
+
+Use `## vMAJOR.MINOR.PATCH - YYYY-MM-DD` for release headings, without square
+brackets (include the prerelease suffix when applicable). Release validation
+must reject missing, duplicate, undated or empty entries for the tag before
+packaging starts. The tagged changelog section is the single source for both
+`latest.json.notes` and the GitHub release description; never substitute
+`Unreleased` or generic boilerplate. Later GitHub description edits do not
+update the published feed. Render these notes as Markdown in both the update
+prompt and Settings, with GitHub-style lists and tables, escaped HTML and safe
+link protocols. Open HTTP(S) release-note links through a validated native
+browser boundary and show launch failures. Changelog extraction must preserve
+literal Markdown code and ignore release headings inside fenced examples or
+comments. Keep long notes scrollable without removing the Update Now / Skip this
+Update choices.

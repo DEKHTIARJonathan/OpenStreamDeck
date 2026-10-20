@@ -1,4 +1,35 @@
 import { test, expect } from "@playwright/test";
+import applicationPages from "./fixtures/config-application-pages.json" with { type: "json" };
+
+test("application-page configuration survives import, editing, save, reload and export", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.locator('input[type="file"][accept=".json"]').setInputFiles({
+    name: "application-pages.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(applicationPages)),
+  });
+  await expect(
+    page.getByRole("button", { name: "Editor", exact: true }),
+  ).toHaveClass(/selected/);
+  await page.getByRole("button", { name: "LCD 1: Save", exact: true }).click();
+  await page.getByLabel("Label", { exact: true }).fill("Save file");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "LCD 1: Save file", exact: true }),
+  ).toBeVisible();
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const stream = await (await download).createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+  const expected = structuredClone(applicationPages);
+  expected.pages[1].bindings.lcd1!.title = "Save file";
+  expect(JSON.parse(Buffer.concat(chunks).toString())).toEqual(expected);
+});
+
 test("navigation buttons are fixed on empty pages", async ({ page }) => {
   await page.goto("/");
   for (const number of [1, 2]) {

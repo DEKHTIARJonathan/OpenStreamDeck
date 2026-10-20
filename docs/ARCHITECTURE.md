@@ -102,3 +102,26 @@ WebSocket transport. A local token-authenticated Claude hook receiver accepts
 structured events; user hook setup is not automated. Adapter errors and absent
 focus/prompt capabilities must remain visible. OS foreground behavior and
 physical screen appearance require manual validation beyond fixture tests.
+
+## Native updates
+
+`src-tauri/src/updates.rs` owns the update state machine and the complete native
+download/verify/install/restart operation. One **Install Update** command starts
+a task independent of the webview lifetime. `src/UpdatePanel.tsx` renders
+versioned snapshots/events; stale hydration cannot rewind progress. The
+app-level progress panel blocks edits from download through automatic restart
+and restores when the webview reopens. The action engine and updater share the
+active-action lock before downloading, closing the workflow-start race. Failures
+release the work gate; restart failures retry without reinstalling. Ordinary
+close/quit is blocked during the operation while the updater's restart exit is
+permitted. Development macOS app bundles support installation from localhost;
+release builds use GitHub. Both verify with the configured public key. Loopback
+fixtures and injected installer/restart boundaries keep automated tests from
+replacing apps. The native scheduler checks on startup and six hours after the
+latest completed attempt. `updates/history.rs` atomically stores the timestamp
+and skipped version in app data. Reminders are published before
+foregrounding/recreating the GUI so a new webview recovers the notice from its
+snapshot. Skipped versions suppress both automatic foregrounding and prompts;
+manual installation remains available. The scheduler shares normal check
+serialization and stays independent of GUI lifetime. See
+[signed updates](UPDATES.md) for operation and validation limits.

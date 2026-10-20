@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { call, native } from "./api";
 import type { Config, Snapshot } from "./model";
+import UpdatePanel from "./UpdatePanel";
 
 type Tab = "general" | "device" | "agents";
 const tabs = [
@@ -216,6 +217,7 @@ export default function SettingsPanel({
                 behavior apply in the desktop app.
               </p>
             )}
+            <UpdatePanel dirty={dirty} fail={fail} />
             <div className="settings-card settings-storage">
               <span className="setting-icon">
                 <Fingerprint size={21} />

@@ -199,6 +199,19 @@ that preserve live and saved state. Unsupported schemas are rejected rather than
 converted. Tests use synthetic configuration; no private saved configuration is
 used.
 
+`settings::tests::startup_preserves_application_page_settings_through_save_and_reload`
+uses the production startup loader with
+`tests/fixtures/config-application-pages.json`. It reproduced the
+`unknown field page_switching` startup failure before the compatibility fix. It
+now verifies loading without rewriting the file, complete JSON preservation, an
+ordinary IPC/save/reload cycle and an unchanged original backup.
+Application-page metadata is retained without executing automatic switching in
+this build; the startup warning makes this limitation visible, including when OS
+login-registration inspection also fails. Frontend model/draft tests and
+`tests/pages.spec.ts` cover import, editing, save acknowledgement, reload and
+export without losing this metadata. These tests use temporary files and
+injected OS registration; they do not launch the native GUI.
+
 `tests/pages.spec.ts` also checks JSON download, import, save/reload and
 re-export through the browser UI, preserving the selected page and device
 settings.
@@ -238,11 +251,72 @@ format and key IDs, then generates a multi-platform `latest.json` feed and
 checksums before draft publication. Workflow syntax is checked by actionlint and
 yamllint; no tests duplicate workflow or manifest configuration.
 
-These are build/release foundations, not a completed in-app updater. No update
-IPC, UI, download or install action is exposed. Hosted signing/publishing and
-upgrades between actual packaged versions have not been observed. Signature
-key-ID matching is not independent artifact signature verification. The
-[update design](UPDATES.md) lists the required runtime coverage and OS checks.
+The in-app updater is implemented in `src-tauri/src/updates.rs`, with typed UI
+state in `src/UpdatePanel.tsx`. Native loopback tests exercise the actual Tauri
+updater: available/current releases, malformed/missing-platform feeds, HTTP and
+connection errors, corrupt/interrupted downloads, wrong keys, progress,
+deadlines, retries and concurrent requests. Injected installer and restart
+boundaries cover the one-click sequence, verified-byte handoff,
+dirty/busy/unsupported guards before downloading, installation failure and
+automatic restart. Native gate regressions cover overlapping runs whose latest
+binding already finished, and saves rejected before configuration/login effects.
+Restart retries do not reinstall. Exit-policy tests ensure the updater can
+restart while ordinary close/quit remains blocked. Tests never install or
+restart an actual application.
+
+`tests/updates.spec.ts` covers the single Install Update action, automatic
+restart, non-dismissible progress, removal of confirmation/cancel/restart
+controls, literal HTML in release notes, restored webview progress, stale
+snapshots, current/feed/signature/installer/restart errors, unsaved drafts,
+active workflows and unsupported installation formats. The app-wide progress
+dialog prevents editing from download through restart; native state blocks
+close/quit and action starts throughout that sequence.
+
+Automatic-check tests use virtual time for startup, six-hour intervals, manual
+reset, sleep/clock changes and deferral during active updates. Temporary
+app-data fixtures cover last-check persistence, skipped versions across
+restarts, renewed prompts for different versions, stale skip requests and failed
+writes preserving saved state. Reminder tests exercise publication before the
+injected foreground boundary and focus failures; `navigation.rs` tests window
+creation/restoration and foreground sequencing. Browser tests cover
+startup-restored notices, Update Now/Skip this Update, unsaved drafts, skip
+failure/retry and last-check display. Mandatory-choice notice coverage checks
+Escape/backdrop behavior, focus containment and scrollable long notes with both
+choices visible at 1060 × 720. Real OS activation remains a separate native
+validation requirement.
+
+Release publication now requires a dated, nonempty changelog entry matching the
+tag and uses its Markdown for both the feed and GitHub description. The shared
+Markdown renderer in Settings and the update prompt retains HTML as text and
+uses the renderer's default URL sanitization. Browser regressions cover
+headings, lists, emphasis, code, tables, blocked script links and native HTTP(S)
+link dispatch, including visible browser-launch errors. Native injected-boundary
+tests reject non-web URLs before invoking the OS. Scratch fixtures exercised the
+production release script: fenced/inline code and comment handling, exact
+unbracketed headings, missing/duplicate/empty entries, calendar-date validation,
+and matching generated feed notes/checksum. This is local script validation, not
+an observed hosted publication.
+
+Development builds read a separately served localhost feed. Release builds use
+the configured GitHub feed and enforce HTTPS for feed, payload and redirects.
+Both verify with the configured signing public key. Synthetic signed fixtures
+and loopback servers are compiled only into tests. Development builds permit
+one-click installation and automatic restart; the macOS development `.app`
+follows the same verified-byte installer path as a packaged app. Policy tests
+cover bundled and unbundled macOS executables and the Linux AppImage
+requirement. Linux DEB installations cannot invoke the installer. Real
+macOS/Windows/AppImage replacement, configuration retention, restart and
+hardware reconnection remain unobserved. Hosted signing/publishing has not been
+validated by these runtime tests. See [signed updates](UPDATES.md).
+
+Local macOS review validation on 2026-10-20 passed 64 frontend unit tests, 33
+browser tests and 114 Rust tests with both default and all features enabled. The
+production frontend build passed. Browser screenshots of the Markdown notice and
+progress dialog were inspected at 1060 × 720. No real app replacement was
+performed. The security scan detected RUSTSEC-2026-0382 in `rustls-webpki`
+0.103.15; the lockfile now uses patched 0.103.16. The complete test suite and
+`prek run -a` passed again with the corrected lockfile. Existing transitive
+maintenance/GLib warnings remain described in [CI](CI.md).
 
 Local macOS validation on 2026-10-20 used disposable keys and synthetic files
 outside the checkout. The compiled production build script rejected missing
@@ -265,10 +339,14 @@ universal release matrix, and no application launch or installation was tested.
 ## Integration limitations
 
 macOS development naming: the binary's `macos_dev` tests exercise bundle
-creation, metadata refresh, reuse of rebuilt executables and filesystem errors
-without launching an app. A separate native startup check confirmed that macOS
-reports `OpenStreamDeck`, the executable runs inside `OpenStreamDeck.app`, and
-re-exec preserves the PID. This check does not establish complete tray lifecycle
+creation, metadata refresh, refreshing hard links after Cargo replaces the
+executable, migration of an existing symlink and filesystem errors. A bounded
+subprocess test launches the test binary from the generated app bundle and
+checks Tauri's actual starting-executable validation without launching the UI,
+USB worker or agents. This covers the macOS updater failure previously missed by
+mock-app tests. A separate native startup check confirmed that macOS reports
+`OpenStreamDeck`, the executable runs inside `OpenStreamDeck.app`, and re-exec
+preserves the PID. This check does not establish complete tray lifecycle
 behavior.
 
 Native-effect tests are not yet exhaustive. Remaining coverage includes OS

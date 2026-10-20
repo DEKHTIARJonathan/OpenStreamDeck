@@ -174,19 +174,36 @@ pushes. A tag such as `v0.1.0` must match the versions in `package.json`,
 `src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` exactly. Update the Cargo
 lockfile's workspace package version when changing versions. Prerelease tags
 such as `v0.2.0-rc.1` are supported and marked prerelease. Inconsistent versions
-fail before packaging. Neither workflow accepts manual dispatch.
+fail before packaging. The tagged revision must also contain exactly one dated,
+nonempty `CHANGELOG.md` section for that version. Neither workflow accepts
+manual dispatch.
 
 The release sequence is:
 
-1. Validate the tag and versions.
+1. Validate the tag, versions and matching changelog entry.
 2. Run Linux Prek, then the three-platform Build and Test matrix on the tagged
    revision.
 3. Build Linux DEB/AppImage, macOS universal app/DMG (Apple Silicon + Intel),
    and Windows MSI/NSIS installers, including signed updater payloads and `.sig`
    sidecars. All matrix jobs must succeed.
 4. Require every expected format, reject duplicates, empty files and signatures
-   with mismatched key IDs, then generate `latest.json` and `SHA256SUMS`.
-5. Create a draft, upload all assets, and publish only after successful upload.
+   with mismatched key IDs, then generate `latest.json` using the matching
+   changelog section as its notes, followed by `SHA256SUMS`.
+5. Create a draft with the same notes, upload all assets, and publish only after
+   successful upload.
+
+Before tagging, move the release's curated entries out of `Unreleased` into a
+heading such as `## v0.1.0 - 2026-10-20`, leaving `Unreleased` at the top for
+future changes. Prereleases use the complete version, for example
+`## v0.2.0-rc.1 - 2026-10-20`. The content below that heading, up to the next
+level-two heading, supplies the release notes. Category headings alone do not
+count as notes. The pipeline never uses `Unreleased` as a fallback or derives
+notes from commits, tag messages or pull requests.
+
+Maintainers can edit a GitHub release description after publication, but that
+does not rewrite its uploaded `latest.json` or checksums. Keep the desired
+shared text in `CHANGELOG.md` before tagging; GitHub-only edits are not
+automatically synchronized to the app.
 
 Only the final publication job can write repository contents. Installer jobs
 have no release credentials. If upload fails, an unpublished draft remains for
@@ -199,12 +216,13 @@ tag.
 macOS bundles use ad-hoc signing; **Developer ID signing and notarization are
 not configured**. Windows installers are unsigned. Operating systems may show
 untrusted-publisher warnings. Distribution signing requires separate certificate
-configuration. The signed updater feed is prepared; in-app check/install
-controls are planned. Configure the workflow public key and two Actions secrets
-described in [UPDATES.md](UPDATES.md#github-actions) before pushing a release
-tag. Linux packages are built on the `ubuntu-latest` runner image; deployment on
-other distributions requires separate validation. No proprietary vendor drivers
-or firmware are bundled. macOS/Windows use the platform HID APIs. The Linux DEB
+configuration. The signed updater feed and native check/download/install
+controls are implemented; actual OS upgrades remain a manual validation gate.
+Configure the workflow public key and two Actions secrets described in
+[UPDATES.md](UPDATES.md#github-actions) before pushing a release tag. Linux
+packages are built on the `ubuntu-latest` runner image; deployment on other
+distributions requires separate validation. No proprietary vendor drivers or
+firmware are bundled. macOS/Windows use the platform HID APIs. The Linux DEB
 installs the N3 udev rule; AppImage users must install it themselves:
 
 ```sh

@@ -11,6 +11,8 @@ export interface Page {
   id: string;
   name: string;
   bindings: Record<string, Action>;
+  /** Retained for other version-2 builds; this editor does not interpret it. */
+  application?: unknown;
 }
 export interface Workflow {
   id: string;
@@ -29,6 +31,8 @@ export interface Config {
   version: number;
   pages: Page[];
   active_page: string;
+  /** Retained for other version-2 builds; switching is unavailable here. */
+  page_switching?: unknown;
   workflows: Workflow[];
   providers: Provider[];
   brightness: number;
@@ -75,6 +79,7 @@ export interface Navigation {
   revision: number;
 }
 export interface Snapshot {
+  update?: import("./UpdatePanel").UpdateStatus;
   navigation: Navigation;
   config: Config;
   device: Device;
@@ -252,7 +257,11 @@ export function validateConfig(value: unknown): Config {
     menu_bar_only: true,
     ...object(value, "config"),
   };
-  if (Object.keys(w).some((key) => !Object.hasOwn(defaultConfig(), key)))
+  if (
+    Object.keys(w).some(
+      (key) => key !== "page_switching" && !Object.hasOwn(defaultConfig(), key),
+    )
+  )
     throw new Error("Unsupported config field");
   if (w.version !== 2 || !Array.isArray(w.pages) || !w.pages.length)
     throw new Error("Not an OpenStreamDeck config");

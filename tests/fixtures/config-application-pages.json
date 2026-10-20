@@ -1,0 +1,44 @@
+{
+  "version": 2,
+  "pages": [
+    {
+      "id": "home",
+      "name": "Home",
+      "bindings": {},
+      "application": null
+    },
+    {
+      "id": "editor",
+      "name": "Editor",
+      "bindings": {
+        "lcd1": {
+          "kind": "shortcut",
+          "value": "meta+s",
+          "title": "Save",
+          "color": "#35446b",
+          "image": null,
+          "children": [],
+          "options": {}
+        }
+      },
+      "application": {
+        "name": "Example Editor",
+        "identities": [
+          { "platform": "macos", "value": "org.example.editor" },
+          { "platform": "windows", "value": "C:\\Example\\Editor.exe" }
+        ],
+        "image": null
+      }
+    }
+  ],
+  "active_page": "editor",
+  "page_switching": { "enabled": true, "default_page": "home" },
+  "workflows": [],
+  "providers": [],
+  "brightness": 37,
+  "image_size": 64,
+  "rotation": 90,
+  "sleep_minutes": 17,
+  "launch_at_login": false,
+  "menu_bar_only": true
+}

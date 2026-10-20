@@ -1775,3 +1775,414 @@ main {
     transition: none;
   }
 }
+
+.update-content {
+  padding: 20px 24px;
+  display: grid;
+  gap: 14px;
+}
+.update-content p {
+  margin: 0;
+  line-height: 1.6;
+}
+.update-content > .badge {
+  justify-self: start;
+}
+.update-controls {
+  flex-wrap: wrap;
+}
+.update-notes summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.update-notes .release-markdown {
+  max-height: 240px;
+  margin-top: 12px;
+}
+.release-markdown {
+  overflow: auto;
+  overflow-wrap: anywhere;
+  color: #a7b0be;
+  font-size: 13px;
+  line-height: 1.65;
+  scrollbar-width: thin;
+}
+.release-markdown:focus-visible {
+  outline: 2px solid #b3e8d8;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.release-markdown :is(h1, h2, h3, h4, h5, h6),
+.update-dialog .release-markdown :is(h1, h2, h3, h4, h5, h6) {
+  margin: 18px 0 8px;
+  color: #e1e7ee;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+.release-markdown > :first-child {
+  margin-top: 0 !important;
+}
+.release-markdown p,
+.update-dialog .release-markdown p {
+  margin: 0 0 10px;
+}
+.release-markdown :is(ul, ol) {
+  margin: 8px 0 14px;
+  padding-left: 20px;
+}
+.release-markdown li {
+  margin: 5px 0;
+}
+.release-markdown li::marker {
+  color: #96bcaf;
+}
+.release-markdown strong {
+  color: #e1e7ee;
+  font-weight: 600;
+}
+.release-markdown a {
+  color: #b3e8d8;
+  text-underline-offset: 3px;
+}
+.release-markdown code {
+  color: #d5c8f2;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #ffffff08;
+}
+.release-markdown pre {
+  overflow: auto;
+  padding: 12px;
+  border-radius: 8px;
+  background: #13171d;
+}
+.release-markdown pre code {
+  padding: 0;
+  background: none;
+}
+.release-markdown blockquote {
+  margin: 12px 0;
+  padding: 0 12px;
+  border-left: 2px solid #96bcaf;
+}
+.release-markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.release-markdown :is(th, td) {
+  padding: 8px 10px;
+  border: 1px solid #343c47;
+  text-align: left;
+}
+.release-markdown th {
+  background: #13171d;
+  color: #e1e7ee;
+}
+.release-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.release-markdown .contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+.release-markdown input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+}
+.update-progress {
+  display: grid;
+  gap: 6px;
+}
+.update-progress progress {
+  width: 100%;
+  height: 6px;
+  accent-color: #b3e8d8;
+  border: 0;
+  border-radius: 99px;
+  overflow: hidden;
+}
+.update-progress progress::-webkit-progress-bar {
+  background: #2d363b;
+}
+.update-progress progress::-webkit-progress-value {
+  background: #b3e8d8;
+  border-radius: 99px;
+}
+.update-dialog {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  margin: auto;
+  overflow: auto;
+  color: #eef2f4;
+  background: #1a1e25;
+  border: 1px solid #3a424c;
+  border-radius: 20px;
+  box-shadow:
+    0 32px 100px #0009,
+    0 0 0 1px #0005,
+    inset 0 1px 0 #ffffff06;
+}
+.update-dialog::backdrop {
+  background: #080b10b8;
+  backdrop-filter: blur(9px);
+}
+.update-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.update-dialog-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 32px 32px 24px;
+}
+.update-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.update-brand img {
+  flex-shrink: 0;
+  border-radius: 12px;
+}
+.update-brand > span {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+}
+.update-brand small {
+  display: block;
+  margin-top: 5px;
+  color: #9ba6b4;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+}
+.update-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 28px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+}
+.update-dialog p {
+  margin-bottom: 0;
+  color: #a7b0be;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.update-version-change {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
+  margin-top: 26px;
+  padding: 20px;
+  border: 1px solid #343c47;
+  border-radius: 12px;
+  background: #13171d;
+}
+.update-version-change > div {
+  min-width: 0;
+}
+.update-version-change > svg {
+  color: #647583;
+}
+.update-version-change span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: #a7b0be;
+  font-size: 11px;
+}
+.update-version-change strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 21px;
+  font-weight: 550;
+  letter-spacing: -0.5px;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.update-version-change > div:last-child strong {
+  color: #b3e8d8;
+}
+.update-version-change em {
+  padding: 3px 5px;
+  color: #b3e8d8;
+  background: #b3e8d812;
+  border-radius: 4px;
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 650;
+  letter-spacing: 0.6px;
+}
+.update-release-preview {
+  margin-top: 24px;
+}
+.update-release-preview h3 {
+  margin-bottom: 9px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e1e7ee;
+}
+.update-release-preview .release-markdown {
+  max-height: 180px;
+  padding-right: 6px;
+}
+.update-dialog .update-restart-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  color: #9ba6b4;
+  font-size: 11px;
+}
+.update-restart-note svg {
+  flex-shrink: 0;
+  color: #96bcaf;
+}
+.update-dialog .update-dialog-warning,
+.update-dialog .update-dialog-error {
+  margin-top: 20px;
+  padding: 12px 14px;
+  border: 1px solid #d6b07338;
+  border-radius: 9px;
+  background: #d6b0730a;
+  color: #e0c392;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.update-dialog .update-dialog-error {
+  border-color: #e9969638;
+  background: #e996960a;
+  color: #f0b1b1;
+}
+.update-dialog-footer {
+  flex-shrink: 0;
+  padding: 22px 32px 20px;
+  border-top: 1px solid #343c4780;
+  background: #14181e80;
+  text-align: center;
+}
+.update-dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: 12px;
+}
+.update-dialog-actions button {
+  min-height: 44px;
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.update-dialog-actions button:not(.primary) {
+  background: transparent;
+  border-color: #414b57;
+  color: #c9d1db;
+}
+.update-dialog-actions button:not(.primary):hover:not(:disabled) {
+  background: #2a313c;
+  border-color: #667381;
+}
+.update-dialog-footer > small {
+  display: block;
+  margin-top: 14px;
+  color: #929eaf;
+  font-size: 10px;
+}
+.update-install-dialog {
+  text-align: center;
+}
+.update-install-dialog .update-brand {
+  text-align: left;
+}
+.update-install-dialog .update-dialog-body {
+  padding-bottom: 32px;
+}
+.update-install-symbol {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 4px auto 24px;
+  color: #b3e8d8;
+  background: #b3e8d80b;
+  border: 1px solid #b3e8d829;
+  border-radius: 20px;
+}
+.update-install-symbol svg {
+  animation: update-spin 3s linear infinite;
+}
+.update-stages {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 28px 0;
+}
+.update-stages li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #929eaf;
+  font-size: 11px;
+}
+.update-stages li.active {
+  color: #b3e8d8;
+}
+.update-stages li span {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #424c59;
+  border-radius: 50%;
+  font-size: 10px;
+}
+.update-stages li.active span {
+  background: #b3e8d810;
+  border-color: #b3e8d84d;
+}
+.update-install-dialog .update-progress {
+  gap: 10px;
+  color: #a7b0be;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes update-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .update-install-symbol svg {
+    animation: none;
+  }
+}
+@media (max-width: 540px) {
+  .update-dialog {
+    max-width: calc(100vw - 24px);
+  }
+  .update-dialog-body {
+    padding: 24px 20px;
+  }
+  .update-dialog-footer {
+    padding: 20px;
+  }
+  .update-version-change {
+    gap: 14px;
+    padding: 16px;
+  }
+}

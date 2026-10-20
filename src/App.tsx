@@ -32,6 +32,11 @@ import {
 import { call, native, on } from "./api";
 import ApplicationPicker from "./ApplicationPicker";
 import SettingsPanel from "./SettingsPanel";
+import {
+  UpdateInstallGuard,
+  UpdatePrompt,
+  type UpdateStatus,
+} from "./UpdatePanel";
 import DeletePageDialog from "./DeletePageDialog";
 import { removePage, renamePage } from "./page-editor";
 import RenamePageDialog from "./RenamePageDialog";
@@ -361,6 +366,13 @@ export default function App() {
     name: string;
   } | null>(null);
   const [deletePageId, setDeletePageId] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
+  const applyUpdateStatus = (next?: UpdateStatus) => {
+    if (next)
+      setUpdateStatus((current) =>
+        !current || next.revision >= current.revision ? next : current,
+      );
+  };
   const navigationRevision = useRef(-1);
   const applyNavigation = (navigation?: Navigation) => {
     if (navigation && navigation.revision > navigationRevision.current) {
@@ -417,12 +429,14 @@ export default function App() {
       sub<InputEvent>("input", setLastInput),
       sub<Navigation>("navigate", applyNavigation),
       sub<string>("action_error", fail),
+      sub<UpdateStatus>("update_status", applyUpdateStatus),
     ])
       .then(async () => {
         if (disposed) return;
         const s = await call<Snapshot>("snapshot");
         if (!disposed) {
           setSnap(s);
+          applyUpdateStatus(s.update);
           if (s.settings_error) fail(s.settings_error);
           setEditor((current) => receiveConfig(current, s.config));
           applyNavigation(s.navigation);
@@ -553,6 +567,13 @@ export default function App() {
   };
   return (
     <div className="app">
+      <UpdatePrompt
+        status={updateStatus}
+        dirty={dirty}
+        apply={applyUpdateStatus}
+        fail={fail}
+      />
+      <UpdateInstallGuard status={updateStatus} />
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-mark">
@@ -602,7 +623,10 @@ export default function App() {
           >
             {snap.device.connected ? "Disconnect device" : "Connect device"}
           </button>
-          <span className="version">OpenStreamDeck 0.1 · Local first</span>
+          <span className="version">
+            OpenStreamDeck {updateStatus?.current_version ?? "Unknown"} · Local
+            first
+          </span>
         </div>
       </aside>
       <main>

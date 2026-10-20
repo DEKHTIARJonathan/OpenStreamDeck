@@ -1,10 +1,77 @@
 # Signed updates
 
-The build and release pipeline prepares Tauri 2 updater artifacts and a GitHub
-Releases `latest.json` feed. The native updater plugin is registered with a
-build-time public key. **Update checks, download/install controls and restart
-handling are not implemented yet.** Registering the plugin does not make network
-requests or install anything.
+OpenStreamDeck checks for updates on startup and every six hours, including
+while running in the tray with the GUI closed. Settings → General → **Software
+updates** also offers a manual check and displays the last-check time.
+Development builds use `http://127.0.0.1:8080/latest.json`. Release builds use
+the GitHub endpoint configured in `src-tauri/tauri.conf.json`. Both use the
+public verification key supplied at build time. Rust owns checking, downloads,
+signature verification and installation. **Install Update** downloads, verifies,
+installs and restarts in one operation. Release notes render as Markdown in the
+prompt and Settings, including headings, lists, emphasis, links, code and
+GitHub-style tables. HTML is displayed as text, never executed.
+
+When an automatic check finds an update, OpenStreamDeck brings the GUI forward
+and displays **Update Now** / **Skip this Update**. **Update Now** runs the
+complete download, verification, installation and restart. **Skip this Update**
+remembers that version and suppresses its automatic popups and foregrounding,
+even after relaunch. A different available version prompts again. Manual checks
+still let you install a skipped version. The notice requires one of these two
+choices: it has no close button and cannot be dismissed with Escape or a
+backdrop click. Further checks wait while the decision is pending. If you have
+unsaved edits, skip to continue editing and install later from Settings.
+
+The timestamp of each completed check attempt (including failures) and the
+skipped version are saved in `updater-state.json` in the application's data
+directory. They are separate from page/settings exports. Every launch checks
+immediately; while running, manual checks reset the six-hour interval.
+Scheduling accounts for sleep and clock changes, defers during another update
+operation, and never queues a burst of missed checks. History-write failures
+remain visible and a failed skip is not treated as saved.
+
+## Try it with cargo tauri dev
+
+Serve your `latest.json` and signed update payloads from a directory outside the
+checkout:
+
+```sh
+python3 -m http.server 8080 --bind 127.0.0.1 --directory /path/to/update-files
+```
+
+The manifest must advertise a version newer than the running app, contain an
+entry for its platform/architecture, and include the signature contents and
+payload URL. For development, use a payload URL such as
+`http://127.0.0.1:8080/OpenStreamDeck.app.tar.gz`. Sign the payload with the
+private key matching your configured `TAURI_SIGNING_PUBLIC_KEY`.
+
+Configure the root `.env` as described below and rebuild/relaunch:
+
+```sh
+cargo tauri dev
+```
+
+The startup check opens the update notice. Choose **Update Now**, or use
+**Settings → General → Software updates → Check for updates → Install Update**.
+The app downloads, verifies, installs and restarts automatically. There is no
+confirmation or cancel step. Save pending changes and finish active workflows
+before starting. Progress and errors stay visible.
+
+On macOS, `cargo tauri dev` runs inside the generated
+`target/debug/OpenStreamDeck.app`. The updater replaces that bundle and restarts
+its new executable. Cargo's separate `target/debug/openstreamdeck` remains the
+source-built version: launching `cargo tauri dev` again restores that version in
+the development bundle. Let the automatic restart launch the installed version.
+Serve a bundled payload built with `cargo tauri build` so the installed app has
+its own frontend assets and does not depend on the development server.
+
+Quit any already-running installed OpenStreamDeck first: the single-instance
+plugin otherwise forwards the launch to that instance. On macOS, the development
+launcher uses a hard link inside its app bundle so Tauri accepts the executable
+path. Existing generated symlinks are replaced automatically on the next launch.
+
+HTTP payloads and redirects are allowed only on localhost in development.
+Release builds require HTTPS, including artifact URLs and redirects. Synthetic
+signing data and loopback servers are confined to automated tests.
 
 ## Configure keys
 
@@ -115,6 +182,17 @@ version, release notes, UTC timestamp, version-specific HTTPS URLs and the
 signatures and feed. Uploads go to a draft; only a complete upload is published.
 Prereleases are explicitly excluded from GitHub's latest release.
 
+Release notes come from the matching dated version section in the tagged
+`CHANGELOG.md`, for example `## v0.1.0 - 2026-10-20` for tag `v0.1.0`. The
+initial release-validation job rejects missing, duplicate, invalidly dated or
+empty entries before packaging. Move the release's entries out of `Unreleased`
+before tagging; `Unreleased` is never published as the notes.
+
+The Markdown content of that section is copied to both `latest.json.notes` and
+the GitHub release description. The app reads only the feed's `notes` field.
+Editing the GitHub description afterward is possible, but does not update the
+already-published feed or what the app displays.
+
 The configured stable feed is:
 
 ```text
@@ -126,28 +204,51 @@ uses `GITHUB_REPOSITORY` for artifact URLs. Until a stable release is published,
 the feed can return 404. Updater signatures are separate from macOS Developer ID
 signing/notarization and Windows Authenticode signing.
 
-## Planned in-app behavior
+## Installing a release update
 
-1. Add **Check for updates** to Settings → General, backed by typed native IPC.
-   Rust owns checking, download state, signature verification and installation.
-   Return explicit states for up-to-date, available, unsupported installation,
-   offline, feed errors and invalid signatures. Do not poll automatically yet.
-2. Show version and release notes, then require an explicit install action.
-   Preserve unsaved drafts and block installation while workflows are active.
-   Keep update state native so closing/reopening the webview cannot lose it.
-3. Report download progress and failures. Define cancellation/timeouts and
-   serialize concurrent requests. Restart only after a successful verified
-   installation and explicit user confirmation, using the existing native
-   lifecycle cleanup. Account for Windows installers exiting the running app.
-4. Exercise production orchestration with loopback manifests, disposable signed
-   artifacts and injected install/restart boundaries. Cover no update,
-   malformed/missing platform data, wrong key, corrupt payload, HTTP errors,
-   interrupted download, duplicate requests, busy workflows, unsaved drafts and
-   install/restart failures. No automated test may install over the running app.
-5. Manually validate an upgrade between two real packaged versions on macOS,
-   Windows MSI/NSIS and Linux DEB/AppImage. Check configuration retention,
-   restart, tray/device cleanup and OS permissions. Document Linux DEB behavior
-   explicitly before offering updates to DEB installations.
+In a supported macOS app bundle, Windows MSI/NSIS installation or Linux
+AppImage:
 
-Hosted release execution and real installation remain separate validation steps.
-See [the verification matrix](TEST-MATRIX.md#updater-preparation).
+1. Select **Check for updates** and review the version and release notes.
+2. Select **Install Update**. That click starts the entire operation: download,
+   signature verification, installation and automatic restart. No further
+   confirmation or restart click is required.
+
+Unsaved drafts and active workflows block the operation before downloading.
+While updating, the progress panel prevents edits, native code blocks new
+workflows and ordinary close/quit, and the operation continues independently of
+the webview. Checks have a 30-second deadline; downloads have a ten-minute
+deadline. Installation is not cancelled or timed out after file replacement
+begins. On Windows, the quiet installer handles relaunch; on macOS/Linux, the
+app requests restart immediately after installation.
+
+Only bytes verified by Tauri reach the installer, which verifies them again.
+Saved pages and settings remain in application data outside the replaced bundle.
+State and progress are restored when a webview reopens. Failures unlock the UI
+and workflows and remain visible. **Install Update** retries failed downloads or
+installations; after a restart failure, it retries only the restart. Linux DEB
+in-app installation remains disabled pending package-manager/privilege
+validation; update those installations through the package manager.
+
+## Validate actual version replacement
+
+Use two packaged release builds with different versions and the same signing
+key. Build both directly with `cargo tauri build`; export the three signing
+variables and enable `bundle.createUpdaterArtifacts` when producing the newer
+payload. Keep Cargo, package.json and Tauri versions synchronized.
+
+Install the older app. Serve the newer platform payload and a `latest.json`
+manifest over HTTPS, with a certificate trusted by the machine. Set the older
+app's `plugins.updater.endpoints` to that feed using a temporary `--config` JSON
+file when building it. The manifest needs the newer version, the matching
+platform entry, its HTTPS download URL and the complete signature contents.
+Alternatively, use the configured GitHub feed after publishing a complete stable
+release. No insecure-transport exception is enabled for packaged releases.
+
+From the older installed app, check and select **Install Update**. Verify its
+new version, retained configuration, restored tray/window behavior, device
+reconnection and OS permissions. Run this separately on macOS, Windows MSI/NSIS
+and Linux AppImage. Automated tests inject installation/restart boundaries and
+never overwrite an application. Hosted publication and actual platform upgrades
+remain manual validation requirements; see the
+[verification matrix](TEST-MATRIX.md#updater-preparation).

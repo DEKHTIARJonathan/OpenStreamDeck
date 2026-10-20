@@ -17,15 +17,20 @@ export function receiveConfig(
   incoming: Config,
 ): ConfigDraft {
   if (!current) return { base: incoming, draft: incoming };
+  const keys = new Set([
+    ...Object.keys(incoming),
+    ...Object.keys(current.base),
+    ...Object.keys(current.draft),
+  ]);
   const draft = Object.fromEntries(
-    Object.keys(incoming).map((key) => {
+    [...keys].flatMap((key) => {
       const k = key as keyof Config;
-      return [
-        key,
-        equal(current.base[k], current.draft[k])
-          ? incoming[k]
-          : current.draft[k],
-      ];
+      const edited =
+        Object.hasOwn(current.base, key) !==
+          Object.hasOwn(current.draft, key) ||
+        !equal(current.base[k], current.draft[k]);
+      const source = edited ? current.draft : incoming;
+      return Object.hasOwn(source, key) ? [[key, source[k]]] : [];
     }),
   ) as unknown as Config;
   // A local page edit may remove the page chosen by a concurrent device event.

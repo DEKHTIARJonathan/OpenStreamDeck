@@ -30,6 +30,10 @@ pub struct Page {
     pub id: String,
     pub name: String,
     pub bindings: BTreeMap<String, Action>,
+    // Preserve application associations written by another version-2 build.
+    // This build does not execute application-based page switching.
+    #[serde(default)]
+    pub application: Option<serde_json::Value>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workflow {
@@ -52,6 +56,8 @@ pub struct Config {
     pub version: u32,
     pub pages: Vec<Page>,
     pub active_page: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page_switching: Option<serde_json::Value>,
     pub workflows: Vec<Workflow>,
     pub providers: Vec<Provider>,
     pub brightness: u8,
@@ -109,8 +115,10 @@ impl Default for Config {
                 id: "home".into(),
                 name: "Home".into(),
                 bindings,
+                application: None,
             }],
             active_page: "home".into(),
+            page_switching: None,
             workflows: vec![Workflow {
                 id: "summarize".into(),
                 name: "Summarize clipboard".into(),

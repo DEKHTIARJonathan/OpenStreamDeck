@@ -1,8 +1,49 @@
 import { describe, expect, it } from "vitest";
-import { defaultConfig } from "./model";
+import { defaultConfig, validateConfig } from "./model";
 import { editConfig, isDirty, receiveConfig } from "./config-draft";
+import applicationPages from "../tests/fixtures/config-application-pages.json";
 
 describe("config draft concurrency", () => {
+  it("retains application-page settings through edits and native save acknowledgements", () => {
+    const initial = validateConfig(structuredClone(applicationPages));
+    const edited = editConfig(receiveConfig(null, initial), (config) => {
+      config.pages[1].bindings.lcd1.title = "Save file";
+    });
+    const received = receiveConfig(edited, { ...initial, brightness: 42 });
+    const expected = structuredClone(applicationPages);
+    expected.brightness = 42;
+    expected.pages[1].bindings.lcd1!.title = "Save file";
+    expect(received.draft).toEqual(expected);
+    const saved = receiveConfig(received, received.draft);
+    expect(saved.draft).toEqual(expected);
+    expect(isDirty(saved)).toBe(false);
+  });
+  it("keeps newly imported optional fields when native events arrive before saving", () => {
+    const original = defaultConfig();
+    const imported = validateConfig(structuredClone(applicationPages));
+    const pending = { base: original, draft: imported };
+    const received = receiveConfig(pending, { ...original, brightness: 75 });
+    expect(received.draft.page_switching).toEqual(imported.page_switching);
+    expect(received.draft.pages).toEqual(imported.pages);
+    const saved = receiveConfig(received, structuredClone(received.draft));
+    expect(saved.draft.page_switching).toEqual(imported.page_switching);
+    expect(isDirty(saved)).toBe(false);
+    expect(receiveConfig(null, saved.draft).draft).toEqual(saved.draft);
+  });
+  it("preserves explicit local removal and accepts remote removal of optional fields", () => {
+    const original = validateConfig(structuredClone(applicationPages));
+    const pending = editConfig(receiveConfig(null, original), (draft) => {
+      delete draft.page_switching;
+    });
+    expect(
+      receiveConfig(pending, { ...original, brightness: 75 }).draft,
+    ).not.toHaveProperty("page_switching");
+    const remote = structuredClone(original);
+    delete remote.page_switching;
+    const clean = receiveConfig(receiveConfig(null, original), remote);
+    expect(clean.draft).not.toHaveProperty("page_switching");
+    expect(isDirty(clean)).toBe(false);
+  });
   it("keeps unsaved key edits when a hardware dial changes brightness", () => {
     const initial = defaultConfig();
     const local = editConfig(receiveConfig(null, initial), (w) => {

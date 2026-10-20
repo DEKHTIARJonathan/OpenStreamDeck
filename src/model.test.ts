@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { defaultConfig, validateConfig } from "./model";
+import applicationPages from "../tests/fixtures/config-application-pages.json";
+
+it("preserves current-version application-page settings through import and export", () => {
+  const imported = validateConfig(structuredClone(applicationPages));
+  expect(JSON.parse(JSON.stringify(imported))).toEqual(applicationPages);
+});
+
 describe("config import boundary", () => {
   it.each([
     null,

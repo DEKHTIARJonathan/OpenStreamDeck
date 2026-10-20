@@ -184,7 +184,10 @@ cargo tauri dev     # Start the native app and its frontend
 
 Native builds require the three signing environment variables. Follow
 [updater key setup](docs/UPDATES.md#configure-keys). CI uses signing secrets to
-produce the release updater artifacts.
+produce the release updater artifacts. In Settings → General, use **Check for
+updates**. Development builds read `http://127.0.0.1:8080/latest.json`; release
+builds read the GitHub feed. See the
+[local update test](docs/UPDATES.md#try-it-with-cargo-tauri-dev).
 
 ### Make your first key
 

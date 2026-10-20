@@ -72,11 +72,12 @@ endpoint changes cannot redirect a stored credential.
 
 ### Establish release evidence and distribution trust
 
-The signed updater feed and build-time key configuration are prepared. Add the
-explicit in-app check, install and restart flow described in
-[the update design](docs/UPDATES.md#planned-in-app-behavior), then validate
-upgrades between packaged versions. See
-[updater evidence](docs/TEST-MATRIX.md#updater-preparation).
+The signed updater feed and in-app check/download/install/restart flow are
+implemented. Development builds use a localhost feed for the same verified
+installation flow; release builds use GitHub. Validate real upgrades between
+packaged versions on each supported platform; Linux DEB in-app installation
+remains disabled pending OS validation. See [the update guide](docs/UPDATES.md)
+and [updater evidence](docs/TEST-MATRIX.md#updater-preparation).
 
 Record successful hosted runs for all three operating systems and test every
 installer before claiming release readiness. Configure macOS Developer ID

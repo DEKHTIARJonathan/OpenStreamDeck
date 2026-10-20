@@ -68,6 +68,13 @@ pub async fn start(app: tauri::AppHandle, action: Action, binding: String) -> St
     {
         let state = app.state::<AppState>();
         let mut active = state.active.lock().unwrap();
+        if state.update_installing.load(Ordering::SeqCst) {
+            let _ = app.emit(
+                "action_error",
+                "An update is in progress. OpenStreamDeck will restart automatically.",
+            );
+            return String::new();
+        }
         if let Some(existing) = active
             .get(&binding)
             .filter(|_| !["brightness", "media", "agent_select"].contains(&action.kind.as_str()))
