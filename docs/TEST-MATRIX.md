@@ -61,6 +61,14 @@ production `ACTION_KINDS` registry.
 | Agent prompt    | Empty prompt and adapter failure                                                                                                                                                                     | No prompts sent to live sessions during tests                                                               |
 | Agent launch    | Allowed agent selection; subprocess exit/cancel; workflow deadline stops its process and marks only its active launch failed                                                                         | Actual paid/live agent launch not run during tests                                                          |
 
+The Windows shell containment regression
+`process_tree::tests::dropping_job_terminates_parent_and_descendant` checks that
+both fixture processes are alive before dropping the production job guard and
+terminate within bounded waits afterward. It retains the descendant process
+handle across cleanup and makes no assumption about the job-close exit code.
+This Windows-only regression requires a Windows run; local macOS tests do not
+execute it.
+
 ## Trigger coverage
 
 All supported raw inputs are defined in `protocol::decode`. The attached device

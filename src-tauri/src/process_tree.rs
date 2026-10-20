@@ -100,7 +100,7 @@ mod tests {
     use super::*;
     use std::{process::Stdio, time::Duration};
     use windows_sys::Win32::{
-        Foundation::WAIT_OBJECT_0,
+        Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT},
         System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE},
     };
 
@@ -169,15 +169,26 @@ mod tests {
             )
         }
         .unwrap();
+        assert!(
+            child.try_wait().unwrap().is_none(),
+            "Fixture parent exited before the job was dropped"
+        );
+        assert_eq!(
+            unsafe { WaitForSingleObject(descendant.as_raw_handle(), 0) },
+            WAIT_TIMEOUT,
+            "Fixture descendant exited before the job was dropped"
+        );
         drop(tree);
-        let status = tokio::time::timeout(Duration::from_secs(5), child.wait())
+        // KILL_ON_JOB_CLOSE guarantees termination, not a nonzero exit code.
+        // Verify the live-to-terminated transition instead of status.success().
+        tokio::time::timeout(Duration::from_secs(5), child.wait())
             .await
-            .unwrap()
-            .unwrap();
-        assert!(!status.success());
+            .expect("Fixture parent survived closing the job")
+            .expect("Could not wait for fixture parent");
         assert_eq!(
             unsafe { WaitForSingleObject(descendant.as_raw_handle(), 5000) },
-            WAIT_OBJECT_0
+            WAIT_OBJECT_0,
+            "Fixture descendant survived closing the job"
         );
     }
 }

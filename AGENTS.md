@@ -373,6 +373,12 @@ backends; use loopback HTTP/WebSocket fixtures. Manual `--hardware-smoke`
 diagnostics are separate and never invoked by CI or hooks. Do not retain ignored
 live-only tests that require a user's running session.
 
+Process-tree termination tests must establish that fixture processes are alive
+before cleanup and wait for their termination afterward with bounded waits.
+Windows kill-on-job-close does not guarantee a nonzero exit code; do not use
+`ExitStatus::success()` as evidence that a process survived cleanup. Retain
+descendant handles across cleanup so PID reuse cannot produce false positives.
+
 Before committing review work, finish actionable corrections, run the complete
 suite and `prek run -a`, and record failures and platform limits. Use the review
 skill when explicitly invoked. A configured matrix is not an observed hosted CI
