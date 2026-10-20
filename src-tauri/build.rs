@@ -82,7 +82,25 @@ fn main() {
     // policy below is authoritative on every platform.
     // This runs single-threaded, before tauri-build starts work.
     std::env::remove_var("STATIC_VCRUNTIME");
-    let attributes = tauri_build::Attributes::new()
-        .windows_attributes(tauri_build::WindowsAttributes::new().static_vc_runtime(true));
+    let windows = if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+        && env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        // tauri-build's resource manifest reaches application binaries only.
+        // Library unit tests also need Common Controls v6 to load Tauri's
+        // dialog imports; otherwise Windows exits with 0xc0000139 before tests.
+        // Embed it through the linker for every target instead. See:
+        // https://github.com/tauri-apps/tauri/issues/13419
+        let manifest =
+            Path::new(&env::var("CARGO_MANIFEST_DIR").expect("Cargo manifest directory"))
+                .join("windows-app-manifest.xml");
+        println!("cargo:rerun-if-changed={}", manifest.display());
+        println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
+        println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
+        tauri_build::WindowsAttributes::new_without_app_manifest()
+    } else {
+        tauri_build::WindowsAttributes::new()
+    };
+    let attributes =
+        tauri_build::Attributes::new().windows_attributes(windows.static_vc_runtime(true));
     tauri_build::try_build(attributes).expect("Tauri build configuration failed");
 }

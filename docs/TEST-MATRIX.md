@@ -15,6 +15,19 @@ Pre-commit checks are separate; see [CI.md](CI.md) for their commands. These
 results do not establish hosted Linux/Windows, real provider or physical-device
 validation.
 
+### Windows test executable startup
+
+The Windows job in
+[CI run 39489793035](https://github.com/DEKHTIARJonathan/OpenStreamDeck/actions/runs/39489793035/job/118861607624)
+compiled the application and test binaries, then exited with `0xc0000139` before
+the Rust test harness started. The MSVC build now embeds the Common Controls v6
+manifest for all targets using the
+[upstream workaround](https://github.com/tauri-apps/tauri/issues/13419#issuecomment-3398457618).
+After this change, all-feature Cargo tests passed locally on macOS arm64 (149
+library tests and 4 entry point tests), and the manifest passed XML validation.
+These checks do not execute the Windows linker or loader; a hosted Windows
+backend test run remains required to confirm the startup fix.
+
 ### Settings and tray behavior
 
 | Supported surface                            | Automated coverage                                                                                                                                                                                                      | Native validation and remaining limits                                                                                                                                                                                                                                                           |

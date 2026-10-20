@@ -128,6 +128,16 @@ Each compilation is a separate step, so a failed build prevents all tests.
 Formatting and Clippy are not repeated in the matrix. Prek does not execute
 tests.
 
+Windows MSVC builds embed the Common Controls v6 application manifest through
+the linker for all targets, including library unit-test executables. Tauri's
+default resource embedding reaches application binaries only; tests that link
+its dialog imports can otherwise exit before the harness starts with
+`0xc0000139` (`STATUS_ENTRYPOINT_NOT_FOUND`). The build script applies the
+[upstream workaround](https://github.com/tauri-apps/tauri/issues/13419#issuecomment-3398457618)
+using `src-tauri/windows-app-manifest.xml`, while retaining static VC runtime
+linking. Running the Windows backend tests verifies that the harness loads;
+`--no-run` alone cannot establish this.
+
 The shared setup uses `dtolnay/rust-toolchain@v1` to install Rust/Cargo and the
 components declared in `rust-toolchain.toml`, including for release packaging.
 The shared setup installs cargo-binstall with
