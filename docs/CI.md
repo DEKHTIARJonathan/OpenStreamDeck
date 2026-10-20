@@ -180,13 +180,18 @@ repository settings are not modified by these files.
 ## Tag releases
 
 [publish.yml](../.github/workflows/publish.yml) responds only to `v*` tag
-pushes. A tag such as `v0.1.0` must match the versions in `package.json`,
-`src-tauri/Cargo.toml` and `src-tauri/tauri.conf.json` exactly. Update the Cargo
-lockfile's workspace package version when changing versions. Prerelease tags
-such as `v0.2.0-rc.1` are supported and marked prerelease. Inconsistent versions
-fail before packaging. The tagged revision must also contain exactly one dated,
-nonempty `CHANGELOG.md` section for that version. Neither workflow accepts
-manual dispatch.
+pushes. A tag such as `v0.2.0` must match `[workspace.package].version` in the
+root `Cargo.toml`, the single source of the application version.
+`src-tauri/Cargo.toml` inherits it with `version.workspace = true`; Tauri uses
+that Cargo version when its configuration omits `version`. The private frontend
+`package.json` also omits `version`. Release validation rejects overrides in
+these files. After changing the root version, refresh lockfiles with
+`cargo update -p openstreamdeck` and `bun install --lockfile-only`. Cargo
+records the resolved workspace version; Bun does not record a version for this
+private root package. Prerelease tags such as `v0.2.0-rc.1` are supported and
+marked prerelease. Inconsistent versions fail before packaging. The tagged
+revision must also contain exactly one dated, nonempty `CHANGELOG.md` section
+for that version. Neither workflow accepts manual dispatch.
 
 The release sequence is:
 
@@ -203,7 +208,7 @@ The release sequence is:
    successful upload.
 
 Before tagging, move the release's curated entries out of `Unreleased` into a
-heading such as `## v0.1.0 - 2026-10-20`, leaving `Unreleased` at the top for
+heading such as `## v0.2.0 - 2026-10-20`, leaving `Unreleased` at the top for
 future changes. Prereleases use the complete version, for example
 `## v0.2.0-rc.1 - 2026-10-20`. The content below that heading, up to the next
 level-two heading, supplies the release notes. Category headings alone do not

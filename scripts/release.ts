@@ -86,11 +86,7 @@ async function readSignature(artifact: string) {
   return signature;
 }
 
-export function validateVersion(
-  tag: string,
-  refType: string,
-  versions: string[],
-) {
+export function validateVersion(tag: string, refType: string, version: string) {
   if (
     refType !== "tag" ||
     !/^v\d+\.\d+\.\d+(?:-[0-9A-Za-z]+(?:[.-][0-9A-Za-z]+)*)?$/.test(tag)
@@ -99,12 +95,9 @@ export function validateVersion(
       "Release requires a vMAJOR.MINOR.PATCH tag (optionally a prerelease), not a branch.",
     );
   }
-  if (
-    versions.length !== 3 ||
-    versions.some((version) => `v${version}` !== tag)
-  ) {
+  if (`v${version}` !== tag) {
     throw new Error(
-      `Tag ${tag} must match package.json, src-tauri/Cargo.toml and tauri.conf.json: ${versions.join(", ")}`,
+      `Tag ${tag} must match Cargo.toml workspace.package.version: ${version}`,
     );
   }
 }
@@ -209,11 +202,23 @@ export async function checkVersion() {
   const config = await Bun.file("src-tauri/tauri.conf.json").json();
   const cargo = Bun.TOML.parse(
     await Bun.file("src-tauri/Cargo.toml").text(),
-  ) as { package: { version: string } };
+  ) as { package: { version: { workspace?: boolean } } };
+  const workspace = Bun.TOML.parse(await Bun.file("Cargo.toml").text()) as {
+    workspace: { package: { version: string } };
+  };
+  if (
+    cargo.package.version?.workspace !== true ||
+    pkg.version !== undefined ||
+    config.version !== undefined
+  ) {
+    throw new Error(
+      "Use only Cargo.toml workspace.package.version: src-tauri must inherit it with version.workspace = true, and package.json and tauri.conf.json must omit version.",
+    );
+  }
   validateVersion(
     process.env.RELEASE_TAG || "",
     process.env.RELEASE_REF_TYPE || "",
-    [pkg.version, cargo.package.version, config.version],
+    workspace.workspace.package.version,
   );
   const changelog = Bun.file("CHANGELOG.md");
   if (!(await changelog.exists()))

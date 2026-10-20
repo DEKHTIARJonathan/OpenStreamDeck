@@ -183,7 +183,7 @@ signatures and feed. Uploads go to a draft; only a complete upload is published.
 Prereleases are explicitly excluded from GitHub's latest release.
 
 Release notes come from the matching dated version section in the tagged
-`CHANGELOG.md`, for example `## v0.1.0 - 2026-10-20` for tag `v0.1.0`. The
+`CHANGELOG.md`, for example `## v0.2.0 - 2026-10-20` for tag `v0.2.0`. The
 initial release-validation job rejects missing, duplicate, invalidly dated or
 empty entries before packaging. Move the release's entries out of `Unreleased`
 before tagging; `Unreleased` is never published as the notes.
@@ -235,7 +235,8 @@ validation; update those installations through the package manager.
 Use two packaged release builds with different versions and the same signing
 key. Build both directly with `cargo tauri build`; export the three signing
 variables and enable `bundle.createUpdaterArtifacts` when producing the newer
-payload. Keep Cargo, package.json and Tauri versions synchronized.
+payload. Set the application version once in the root `Cargo.toml` under
+`[workspace.package]`; the native crate and Tauri inherit it.
 
 Install the older app. Serve the newer platform payload and a `latest.json`
 manifest over HTTPS, with a certificate trusted by the machine. Set the older

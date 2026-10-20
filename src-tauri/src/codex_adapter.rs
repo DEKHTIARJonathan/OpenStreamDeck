@@ -58,7 +58,7 @@ async fn response<S: AsyncRead + AsyncWrite + Unpin>(
 async fn snapshot<S: AsyncRead + AsyncWrite + Unpin>(
     socket: &mut WebSocketStream<S>,
 ) -> Result<Vec<AgentSession>, String> {
-    socket.send(Message::Text(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"openstreamdeck","version":"0.1.0"},"capabilities":{"experimentalApi":true}}}).to_string().into())).await.map_err(|e|e.to_string())?;
+    socket.send(Message::Text(json!({"id":1,"method":"initialize","params":{"clientInfo":{"name":"openstreamdeck","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}}).to_string().into())).await.map_err(|e|e.to_string())?;
     response(socket, 1).await?;
     socket
         .send(Message::Text(

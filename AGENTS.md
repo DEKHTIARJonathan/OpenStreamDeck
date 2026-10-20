@@ -188,7 +188,12 @@ cargo-audit releases without explicit tool-version overrides. GitHub Actions
 still use release tags.
 
 The root Cargo workspace contains `src-tauri`; no custom `cargo tauri run`
-command is needed. Native builds require the platform Tauri prerequisites.
+command is needed. The application version lives only in root `Cargo.toml` under
+`[workspace.package]`. Keep `version.workspace = true` in `src-tauri/Cargo.toml`
+and omit `version` from `package.json` and `src-tauri/tauri.conf.json` so Tauri
+uses the inherited Cargo version. Refresh Cargo and Bun lockfiles after a bump;
+release tags and dated changelog entries must match the workspace version.
+Native builds require the platform Tauri prerequisites.
 
 Keep development builds optimized for compilation speed: the root Cargo dev
 profile disables optimization and LTO, preserves full debug information, enables
