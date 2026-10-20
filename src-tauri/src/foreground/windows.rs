@@ -130,12 +130,12 @@ pub(super) fn observe(stop: Arc<AtomicBool>, callback: Callback) {
 }
 
 pub(super) fn identity(path: &str) -> Result<String, String> {
-    use windows::core::{Interface, PCWSTR};
-    use windows::Win32::System::Com::{
+    use ::windows::core::{Interface, PCWSTR};
+    use ::windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
         COINIT_APARTMENTTHREADED, STGM_READ,
     };
-    use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+    use ::windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
     let target = if std::path::Path::new(path)
         .extension()
         .is_some_and(|extension| extension.eq_ignore_ascii_case("lnk"))
@@ -185,12 +185,12 @@ mod tests {
     use super::*;
     #[test]
     fn shortcut_identity_resolves_target_without_executing_it() {
-        use windows::core::{Interface, PCWSTR};
-        use windows::Win32::System::Com::{
+        use ::windows::core::{Interface, PCWSTR};
+        use ::windows::Win32::System::Com::{
             CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile, CLSCTX_INPROC_SERVER,
             COINIT_APARTMENTTHREADED,
         };
-        use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
+        use ::windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
         let directory = tempfile::tempdir().unwrap();
         let executable = directory.path().join("Synthetic.exe");
         let shortcut = directory.path().join("Different display name.lnk");
