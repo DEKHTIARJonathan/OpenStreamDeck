@@ -7,12 +7,11 @@ require hardware, agent applications or provider credentials.
 ## Local checks and pre-commit
 
 Install Bun **1.4.2** (also `.bun-version` and `packageManager`), Rust
-**1.96.0** (`rust-toolchain.toml`), platform Tauri prerequisites, and prek
-**0.5.6**. For example, with uv installed:
+**1.96.0** (`rust-toolchain.toml`) and platform Tauri prerequisites. Install
+development tools through the shared Make target:
 
 ```sh
-uv tool install prek==0.5.6
-cargo install cargo-audit --version 0.22.2 --locked
+make setup
 bun ci
 bunx --no-install playwright install chromium
 prek install
@@ -62,10 +61,11 @@ See [TEST-MATRIX.md](TEST-MATRIX.md) for the remaining integration gaps.
 
 The dependency hooks also always run: cargo-deny checks advisories, licenses and
 sources against `deny.toml`; cargo-audit checks `Cargo.lock`; cargo-machete
-checks unused dependencies. CI installs cargo-audit 0.22.2 explicitly. The other
-tools are provisioned by pinned hooks. Machete uses its source scanner because
-its metadata mode incorrectly reports `tauri-build`, which is used in
-`build.rs`. No dependency is exempted from unused-dependency scanning.
+checks unused dependencies. CI installs cargo-audit with cargo-binstall, with
+source compilation disabled. The other tools are provisioned by pinned hooks.
+Machete uses its source scanner because its metadata mode incorrectly reports
+`tauri-build`, which is used in `build.rs`. No dependency is exempted from
+unused-dependency scanning.
 
 Four maintenance advisories remain in Tauri 2's transitive Linux stack and have
 individual, reasoned cargo-deny exceptions: proc-macro-error
@@ -96,6 +96,14 @@ integration validation.
 
 ## Continuous integration
 
+[dependabot.yml](../.github/dependabot.yml) checks Bun, the root Cargo workspace
+(including `src-tauri`) and GitHub Actions weekly. Bun and Cargo updates target
+direct dependencies with `versioning-strategy: increase`, preferring manifest
+and lockfile changes together. Dependabot has no strict filter requiring both:
+broad Cargo requirements can still yield lockfile-only updates, and this policy
+does not guarantee exclusion of lower-bound-only changes. See the
+[Dependabot versioning strategies](https://docs.github.com/en/code-security/reference/supply-chain-security/dependabot-options-reference#versioning-strategy).
+
 [ci.yml](../.github/workflows/ci.yml) runs for pushes to `master` and pull
 requests targeting `master`. The tag release workflow also calls it to validate
 releases. The sequence is:
@@ -113,6 +121,16 @@ same job on each OS, sharing the checkout, `target/` and freshly built `dist/`.
 Each compilation is a separate step, so a failed build prevents all tests.
 Formatting and Clippy are not repeated in the matrix. Prek does not execute
 tests.
+
+The shared setup uses `dtolnay/rust-toolchain@v1` to install Rust/Cargo and the
+components declared in `rust-toolchain.toml`, including for release packaging.
+The Prek job installs prek with `j178/prek-action@v3.0.2` and cargo-binstall
+with `cargo-bins/cargo-binstall@v1.26.0`, then installs cargo-audit using the
+same binary installation approach as `make setup`. Missing cargo-audit binaries
+fail installation instead of falling back to compilation. The local setup target
+and prek hook configuration are unchanged. These tools use their current
+releases without CI version overrides. Rust and Bun versions come from
+`rust-toolchain.toml` and `.bun-version`.
 
 Only Cargo is cached between runs. The shared
 [toolchain action](../.github/actions/setup/action.yml) uses a common

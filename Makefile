@@ -14,6 +14,7 @@ setup:
 	cargo binstall --locked --no-confirm tauri-cli
 
 update:
+	prek autoupdate
 	bun update
 	cargo update
 	cargo outdated --workspace --depth 1

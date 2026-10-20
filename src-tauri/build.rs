@@ -1,4 +1,6 @@
 fn main() {
+    // The dev executable embeds this metadata; rebuild when its display name changes.
+    println!("cargo:rerun-if-changed=Info.plist");
     // Clear the CLI-injected environment override so the explicit runtime
     // policy below is authoritative on every platform.
     // This runs single-threaded, before tauri-build starts work.

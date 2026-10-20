@@ -13,6 +13,12 @@ release tooling, storage identifiers and documentation synchronized when naming
 changes. Identify hardware by model and USB IDs. Use explicit placeholders when
 sanitizing records; retain the measured build identity and validation date.
 
+On macOS, development launches must display OpenStreamDeck in the Dock too. The
+debug entry point re-execs inside a lightweight app bundle under the target
+directory before Tauri starts. Preserve the PID, arguments and stdio so Cargo
+reload and termination still work. Verify the running OS application name;
+embedded plist contents alone do not prove the Dock label is correct.
+
 The UI is a modern control deck. Include OS/application shortcuts, media
 controls, pages, macros, artwork, AI workflows and Claude Code/Codex/Herdr
 session status. Exclude other device families, weather, vendor
@@ -30,6 +36,12 @@ Run commands from the repository root. Use Bun for all JavaScript dependencies;
 do not use npm, pnpm, yarn, or add their lockfiles. The root `package.json` is
 Bun's standard manifest (not `packages.json`). Commit `bun.lock` and the root
 `Cargo.lock`.
+
+Keep Dependabot configured for Bun, the root Cargo workspace and GitHub Actions.
+Prefer updates that change both declared and resolved dependency versions over
+lower-bound-only or lockfile-only churn. Use direct dependency updates with the
+`increase` strategy as a best effort; Dependabot cannot enforce both-file
+changes for every update. Validate the configuration with the YAML hooks.
 
 ```sh
 bun install                 # local dependency installation
@@ -53,7 +65,18 @@ Use Prettier for TypeScript, TSX, JavaScript, JSX, CSS, JSON and Markdown via
 formatted into readable blocks. Use `cargo fmt --all` to apply Rust formatting
 before running the formatting check.
 
-If absent, install the Rust Tauri CLI with `cargo install tauri-cli --locked`.
+Use `make setup` to install development tools with cargo-binstall. CI installs
+cargo-binstall and prek with their dedicated GitHub Actions, and Rust/Cargo with
+the Rust toolchain action. Install cargo-audit in CI with cargo-binstall and
+disable its fallback to source compilation. Keep CI installation changes in the
+workflows and shared CI action; do not modify the user's Makefile setup target
+or prek configuration to implement them.
+
+Do not duplicate tool version pins in CI. Read Rust and Bun versions from their
+existing toolchain files; install the current prek, cargo-binstall and
+cargo-audit releases without explicit tool-version overrides. GitHub Actions
+still use release tags.
+
 The root Cargo workspace contains `src-tauri`; no custom `cargo tauri run`
 command is needed. Native builds require the platform Tauri prerequisites.
 

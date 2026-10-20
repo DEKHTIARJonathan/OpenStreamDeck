@@ -210,6 +210,13 @@ navigation targets stay intact. Helper and browser coverage is in
 
 ## Integration limitations
 
+macOS development naming: the binary's `macos_dev` tests exercise bundle
+creation, metadata refresh, reuse of rebuilt executables and filesystem errors
+without launching an app. A separate native startup check confirmed that macOS
+reports `OpenStreamDeck`, the executable runs inside `OpenStreamDeck.app`, and
+re-exec preserves the PID. This check does not establish complete tray lifecycle
+behavior.
+
 Native-effect tests are not yet exhaustive. Remaining coverage includes OS
 shortcut/media/mouse behavior, real provider account/model verification, Windows
 job-object execution evidence and terminal activation, all import variants, full

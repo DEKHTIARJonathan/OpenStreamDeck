@@ -1,0 +1,28 @@
+---
+version: 2
+
+updates:
+  - package-ecosystem: bun
+    directory: /
+    schedule:
+      interval: weekly
+    # Prefer manifest and lockfile updates together for direct dependencies.
+    # Dependabot cannot strictly exclude every one-sided update.
+    versioning-strategy: increase
+    allow:
+      - dependency-type: direct
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    # The root workspace includes src-tauri and owns Cargo.lock.
+    # Broad requirements can still produce lockfile-only updates.
+    versioning-strategy: increase
+    allow:
+      - dependency-type: direct
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
