@@ -145,8 +145,14 @@ responsibility boundaries within the current workspace, not separate crates.
 
 Keep project source, maintained documentation and sanitized fixtures required by
 application tests in this repository. External checkouts, exploratory tools and
-raw diagnostic archives belong outside every checkout. Generated dumps, captures
-and screenshots are not documentation.
+raw diagnostic archives belong outside every checkout. Generated dumps and raw
+diagnostic captures are not documentation. Curated product screenshots requested
+for public documentation may live in `docs/images/`; retain only the selected
+assets and record their version, revision, capture date and rendering surface.
+Use public example data, exclude secrets, device serials and personal sessions,
+and distinguish browser previews from native screenshots and physical-device
+evidence. Keep capture scripts, intermediate images and visual QA outside the
+repository. Verify the rendered README, image links and captions after updates.
 
 Keep USB, secrets, process execution and persistence in Rust. Do not add broad
 shell/filesystem permissions to the webview. Do not expose raw arbitrary USB
