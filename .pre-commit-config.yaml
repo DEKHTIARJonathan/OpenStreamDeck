@@ -1,0 +1,102 @@
+---
+minimum_pre_commit_version: '3.0.0'
+
+minimum_prek_version: "0.2.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-builtin-literals
+      - id: check-case-conflict
+      - id: check-docstring-first
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-xml
+      - id: check-yaml
+      - id: debug-statements
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # -------------------------
+  # Frontend, tooling and documentation formatting
+  # -------------------------
+  - repo: https://github.com/rbubley/mirrors-prettier
+    rev: v3.9.10
+    hooks:
+      - id: prettier
+        name: prettier
+        types_or: [text]
+        files: '\.(md|tsx?|jsx?|css|json)$'
+        args: [--prose-wrap=always]
+
+  # -------------------------
+  # CI formatting
+  # -------------------------
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+        args: [-shellcheck=]
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+
+  # -------------------------
+  # Security/License Check
+  # -------------------------
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.20.2
+    hooks:
+      - id: cargo-deny
+        args: [--all-features, --locked, check]
+        always_run: true
+        require_serial: true
+
+  - repo: local
+    hooks:
+      - id: cargo-audit
+        name: Check Rust dependencies for vulnerabilities
+        entry: cargo audit
+        language: system
+        always_run: true
+        require_serial: true
+        pass_filenames: false
+
+  # -------------------------
+  # Unused Dependency Check
+  # -------------------------
+  - repo: https://github.com/bnjbvr/cargo-machete
+    rev: v0.9.2
+    hooks:
+      - id: cargo-machete
+        # Metadata mode misidentifies tauri-build; scan build.rs directly.
+        always_run: true
+        require_serial: true
+
+  # -------------------------
+  # Rust Formatting
+  # -------------------------
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        files: (\.rs$|(^|/)(Cargo\.toml|rustfmt\.toml)$)
+        pass_filenames: false
+        require_serial: true
+
+  - repo: local
+    hooks:
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets --locked -- -D warnings
+        language: system
+        files: (\.rs$|(^|/)Cargo\.(toml|lock)$|^\.pre-commit-config\.yaml$)
+        pass_filenames: false
+        require_serial: true

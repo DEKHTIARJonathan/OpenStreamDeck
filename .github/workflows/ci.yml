@@ -1,0 +1,74 @@
+---
+name: CI
+'on':
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_call:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+env:
+  CI: 'true'
+  CARGO_BUILD_JOBS: '2'
+  CARGO_TERM_COLOR: always
+jobs:
+  prek:
+    name: Prek
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          save-cargo-cache: 'false'
+      - name: Install pinned prek
+        uses: j178/prek-action@v3.0.2
+        with:
+          prek-version: '0.5.6'
+          install-only: true
+      - name: Install pinned Rust advisory checker
+        run: cargo install cargo-audit --version 0.22.2 --locked
+      - name: Prek
+        run: prek run -a
+  build:
+    name: Build and test (${{ matrix.os }})
+    needs: [prek]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Build frontend and production native application
+        run: bun run tauri build --no-bundle --ci -- --locked
+      - name: Build backend test binaries
+        run: >-
+          cargo test --workspace --all-targets --all-features --locked --no-run
+      - name: Test frontend
+        run: bun run test
+      - name: Install browser for hardware-independent UI tests
+        run: bunx --no-install playwright install --with-deps chromium
+      - name: Test browser UI
+        run: bun run test:e2e
+      - name: Test backend
+        run: cargo test --workspace --all-targets --all-features --locked
+      - name: Upload browser failure reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-results-${{ matrix.os }}
+          path: |
+            test-results/
+            playwright-report/
+          if-no-files-found: ignore

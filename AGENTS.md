@@ -1,0 +1,381 @@
+# OpenStreamDeck contributor guide
+
+## Product and authorized scope
+
+OpenStreamDeck is a local N3 controller and AI workflow deck, using Tauri 2,
+Rust, React and TypeScript. Primary hardware is N3 USB `5548:1001`, vendor usage
+page `0xFFA0`, usage `1`. Support macOS, Windows and Linux; explicitly
+distinguish platform build coverage from physical hardware validation.
+
+Use OpenStreamDeck for product branding, `openstreamdeck` for packages and the
+executable, and `OPENSTREAMDECK_` for environment variables. Keep UI, manifests,
+release tooling, storage identifiers and documentation synchronized when naming
+changes. Identify hardware by model and USB IDs. Use explicit placeholders when
+sanitizing records; retain the measured build identity and validation date.
+
+The UI is a modern control deck. Include OS/application shortcuts, media
+controls, pages, macros, artwork, AI workflows and Claude Code/Codex/Herdr
+session status. Exclude other device families, weather, vendor
+accounts/store/cloud services, and a general-purpose AI chat/document editor.
+
+The user authorized reversible tests on the attached N3. Do not flash firmware,
+factory-reset it, or test persistent boot-image writes. Preserve existing vendor
+profiles and do not run the vendor application and OpenStreamDeck against the
+same device simultaneously. Hardware buttons require a human to operate; do not
+claim physical input verification based on injected software events.
+
+## Commands and dependency management
+
+Run commands from the repository root. Use Bun for all JavaScript dependencies;
+do not use npm, pnpm, yarn, or add their lockfiles. The root `package.json` is
+Bun's standard manifest (not `packages.json`). Commit `bun.lock` and the root
+`Cargo.lock`.
+
+```sh
+bun install                 # local dependency installation
+bun ci                      # frozen installation from bun.lock
+bun update                  # intentional dependency update
+bun run dev                 # browser UI development
+cargo tauri dev             # full desktop app; cargo-tauri must be installed
+bun run build               # TypeScript + production frontend
+bun run test                # frontend tests
+bun run test:watch          # rerun affected frontend tests on changes
+bun run test:e2e            # Playwright browser tests
+make test                   # frontend and backend tests only
+cargo test --workspace      # Rust tests
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo tauri build           # native platform bundle
+```
+
+Use Prettier for TypeScript, TSX, JavaScript, JSX, CSS, JSON and Markdown via
+`prek run prettier -a`. Keep frontend source included in the hook; JSX must be
+formatted into readable blocks. Use `cargo fmt --all` to apply Rust formatting
+before running the formatting check.
+
+If absent, install the Rust Tauri CLI with `cargo install tauri-cli --locked`.
+The root Cargo workspace contains `src-tauri`; no custom `cargo tauri run`
+command is needed. Native builds require the platform Tauri prerequisites.
+
+Keep development builds optimized for compilation speed: the root Cargo dev
+profile disables optimization and LTO, preserves full debug information, enables
+incremental compilation and uses 256 codegen units, including build
+dependencies. Do not add dependency optimization overrides to dev. Release
+tuning is separate.
+
+## Architecture
+
+- `src/`: React UI, typed IPC client, physical N3 editor, workflows, agents.
+- `src-tauri/src/protocol.rs`: pure byte encoding/decoding; no OS or UI effects.
+- `device.rs`: vendor-interface HID lifecycle, serialized writes, display
+  rendering.
+- `actions.rs`: local action execution, workflow composition, cancellation.
+- `ai.rs`: provider adapters; API credentials stay in the OS credential store.
+- `agents.rs`: local Herdr/Codex interfaces and Claude lifecycle bridge.
+- `model.rs`, `store.rs`: configuration contracts, validation, persistence.
+- `docs/`: maintained guides, architecture, protocol and verification summaries.
+- `tests/fixtures/`: sanitized inputs consumed by automated tests.
+- `scripts/`: development and release utilities.
+
+Keep project source, maintained documentation and sanitized fixtures required by
+application tests in this repository. External checkouts, exploratory tools and
+raw diagnostic archives belong outside every checkout. Generated dumps, captures
+and screenshots are not documentation.
+
+Keep USB, secrets, process execution and persistence in Rust. Do not add broad
+shell/filesystem permissions to the webview. Do not expose raw arbitrary USB
+writes through frontend IPC. Property inspectors/plugins are separate trust
+boundaries. Preserve unknown imported actions instead of silently deleting them.
+
+## Device protocol and validation
+
+N3 descriptor: 512-byte input payload and 1024-byte output payload. HIDAPI
+outbound buffers include the report-ID prefix, so they contain 1025 bytes. Do
+not confuse that API convention with the USB report descriptor. The second
+interface is a keyboard, not the ordinary vendor-control interface.
+
+Consult `docs/PROTOCOL.md` and the sanitized test fixtures before changing
+packets. Image sizing, rotation and release values can vary by firmware.
+Distinguish configured defaults and supported packet variants from live
+observations. Unknown firmware/variant behavior must not be silently
+generalized.
+
+Each supported capability should link implementation, tests and validation
+limits. Distinguish source inspection, fixture replay, API-level hardware I/O
+and physical observation. HID writes succeeding do not prove the screen looks
+correct. API call traces are not USB bus captures.
+
+Do not commit device serials in new public fixtures, credentials, private
+configurations, prompts or session transcripts. Runtime logs stay in app data;
+keep private diagnostic material outside this repository. Retain licenses and
+attribution for reused code and assets; a dependency's top-level license does
+not automatically cover every bundled component.
+
+## Agent and AI behavior
+
+Herdr is the preferred source for Herdr-managed sessions. Use its versioned
+socket API; distinguish reported state from independently verified outcome.
+Codex uses supported app-server interfaces; Claude Code uses structured events
+or additive hooks. Preserve existing integrations and permission behavior. Never
+infer success from silence, scrape unrelated personal transcripts, or
+auto-approve an agent request. Deduplicate by real session IDs, not titles.
+Unavailable adapters must display a useful unavailable/unknown state.
+
+AI model IDs are user-configurable. No hardcoded claim about a latest model.
+Support OpenAI, Anthropic, Gemini and local compatible endpoints. Explicit
+workflow inputs only; no background clipboard/document collection. Execute only
+configured command steps, not arbitrary model-generated commands. Credentials
+must never enter configuration exports, frontend snapshots or logs.
+
+## Validation and reporting
+
+Use meaningful protocol fixtures, provider event fixtures and persistence tests.
+Test malformed/truncated packets, simultaneous inputs, image chunk boundaries,
+cancellation, reconnect, missing providers and unavailable agents. Validate
+frontend behavior in Playwright and the actual native application separately.
+Keep hardware/OS/provider limitations in the verification report. Report
+failures and unfinished work plainly; a skeleton, mocked flow or catalog entry
+is not a completed capability. Avoid placeholder controls that appear
+functional. Run relevant checks before widening test scope.
+
+Browser event fixtures must give each subscription its own cleanup identity,
+including repeated subscriptions using the same callback. React StrictMode
+cleanup must not remove a newer listener; preserve hardware-error banner
+coverage in `tests/regressions.spec.ts`.
+
+## Required regression coverage
+
+The user explicitly requires tests for EVERY supported action and trigger. This
+overrides the usual preference to skip tests for low-impact edits. Keep the
+action catalog, native dispatch and coverage matrix synchronized. Every new
+action must have success, invalid-configuration and failure-path coverage;
+asynchronous actions also need cancellation and timeout coverage where
+applicable. Exercise the production orchestration with controlled external
+interfaces, not a separate implementation of the behavior in test code.
+
+Test all six LCD keys, all three ordinary buttons, all three dial presses and
+both directions of every dial. Include release variants, malformed/truncated
+reports, interleaved inputs and rapid rotation. Replay the sanitized real-device
+reports in `tests/fixtures/live-input.json`. Never equate replay with physical
+verification of a control that was not observed.
+
+Changing an action type MUST reset incompatible values/options/children. A
+previous `agent_focus` value such as `selected` must never become a brightness
+value. A whole-dial assignment must explicitly configure press, clockwise and
+counterclockwise bindings; a press-only edit must be labeled as such. Test
+assignment to every dial and preservation of unrelated bindings. Show execution
+errors in the UI, including errors originating from hardware triggers.
+
+Keep `docs/TEST-MATRIX.md` accurate: supported surface, corresponding test,
+integration check and remaining limitation. A test count is not a coverage
+claim. Unknown extension actions must survive import but fail explicitly if
+executed.
+
+## Pixel fidelity and runtime behavior
+
+Preserve the React design the user approved. Render that design onto the N3. The
+native artwork renderer is the canonical source of frames for BOTH the hardware
+and native editor preview, including Lucide glyphs, labels, colors, dimensions,
+rotation and JPEG encoding. Do not reintroduce text-only device artwork or
+independent UI stand-ins. Compare reconstructed USB image payloads with preview
+bytes in tests; offer a preview at the native pixel dimensions. Fit glyphs to
+their painted bounds with minimal margins and use large, bold, width-fitted
+labels; wrap to two lines and mark overflow instead of shrinking long labels
+into tiny text. The browser-only design preview is not evidence of hardware
+pixel fidelity.
+
+Connect the N3 immediately at launch and retry discovery/reconnect
+automatically. Explicit Disconnect applies to the current process. Closing the
+GUI must release its webview while USB, actions and monitoring remain running
+behind the tray icon; reopening must recreate the window from current native
+state. Quit must terminate the app.
+
+Keep memory claims measured. Record platform, build, connected hardware, active
+adapters/workflows, cold background versus closed window, and metric. macOS
+physical footprint and RSS are different; do not present main-process memory as
+the whole application if webview helpers remain. Do not extrapolate a macOS
+measurement into a verified Windows/Linux number.
+
+Open App must be an application-picker flow. Selecting an application sets its
+launch target, name and full-key native icon together; never require manual path
+entry or a separate icon upload for the normal flow. Keep URL/custom targets as
+an optional advanced path. Extract OS icons using structured arguments, never
+interpolate an application path into shell/script code. Test missing apps,
+extraction failures and atomic selection updates.
+
+The Agent dashboard action must foreground OpenStreamDeck and select its Agents
+tab, including when the window is minimized or its webview has been closed. Keep
+the requested tab in native state so startup cannot lose navigation events;
+action completion must not overwrite the requested tab. Dashboard navigation and
+agent selection must not enable the LCD session overlay or focus an external
+agent. Only the explicit Show on deck control enables the overlay. Test window
+creation/restoration and failures at the OS boundary, navigation startup races,
+and preservation of all six native frames and bindings. Record actual OS focus
+and physical display validation separately from those automated tests.
+
+Sleep must latch after a press and survive release reports (both `0` and `2`).
+Only a new press or dial rotation may wake the device, and that wake input must
+be consumed rather than also executing its binding. Resolve sleep-action toggles
+inside the serialized device worker; explicit wake remains idempotent. Cover all
+controls and release variants through the production input-routing policy.
+
+The Previous/Next hardware buttons (`button1`/`button2`) have fixed roles and
+must never be assignable. Resolve them before page bindings, including on empty
+or imported pages; imported assignments cannot override navigation. Keep their
+inspector read-only. Cycle all pages with wraparound; clearly explain that
+navigation needs more than one page. Preserve imported configuration data
+without executing those reserved-button assignments. Cover empty pages, imported
+overrides, wraparound and the read-only editor.
+
+Use one flat page collection with `pages` and `active_page`. Saving and JSON
+import/export operate on the app's page and settings configuration. Do not
+introduce a separate workspace or profile layer. Keep only current features:
+delete code, tests, fixtures and documentation together when removing a feature.
+Support only the current configuration format. Cover configuration round trips,
+validation, normal save backups and preservation of unknown extension actions.
+
+Page deletion must be visible beside the page tabs, confirm the named target,
+protect the last page and select a remaining neighbor. Apply it through the
+normal draft/save flow, preserving unrelated bindings and pending local edits.
+Report links to deleted pages without silently rewriting their targets. Cover
+cancel/Escape, stale targets, active-page selection and save/reload behavior.
+
+Do not add an Activity tab or retain action/input history. Keep only active-job
+bookkeeping needed for execution/cancellation, and the latest input for the live
+key highlight. Drop completed outputs after workflow consumption; provider
+streaming must not copy them into UI history. Send action failures directly to
+the shared error banner, including hardware-triggered errors.
+
+## Adapter correctness
+
+Follow the installed adapter's actual transport and schema. In particular,
+`codex app-server proxy` is a raw WebSocket tunnel, not newline-delimited JSON
+RPC. Contract tests must exercise the real WebSocket handshake and messages. Do
+not claim detection alone proves focus or prompt routing works.
+
+Herdr pane focus and OS terminal-window activation are separate steps. Test
+target selection and invoke both when the user requests foreground focus;
+surface missing/ambiguous host-window capabilities. Preserve agent permission
+prompts and never infer completion from a timeout. No integration test may send
+a prompt to someone else's/live working agent without explicit authorization.
+
+## Keep this guide current
+
+Update this file when the user changes a constraint or a regression reveals a
+missing engineering policy. Record the reusable rule and its verification, not a
+running transcript. Update affected documentation and tests in the same change.
+Keep unresolved work visible; do not silently redefine completion.
+
+### Temporary agent files
+
+Keep agent plans, task lists, TODO tracking, progress notes, review notes, and
+scratch lessons outside the repository tree, including all submodules. Use a
+unique task directory under `/tmp/` (for example, create one with
+`mktemp -d /tmp/openstreamdeck-task.XXXXXX`) or another OS temporary directory
+whose resolved path is outside every checkout.
+
+Never create or update these working files inside the checkout, even in ignored
+directories such as `tasks/`, `todos/`, `.cursor`, or `plans/`. Never stage or
+commit them.
+
+Do not append new work to any tracked task or lesson files. Keep durable product
+and architecture documentation in `docs/`, without embedding task checklists or
+linking to temporary files. Before an authorized commit, inspect the staged
+filenames and exclude all agent working files.
+
+## Development process ownership
+
+The user runs `cargo tauri dev` interactively. Do not leave a second Vite server
+on port 1420 or a stale OpenStreamDeck instance that captures single-instance
+launches. Before starting a native dev session, inspect existing
+listeners/processes. Reuse the user's frontend server for browser checks. Stop
+only test processes you started, using their recorded PIDs; never kill an
+arbitrary port owner. Prefer finite `bun run build` and test commands while the
+user's watcher runs. Do not run competing Cargo builds against the same target
+directory. Preserve `strictPort: true`; silently moving the frontend port breaks
+Tauri's dev URL.
+
+## Agent identity, activity and sub-agents
+
+A finished turn is NOT a completed user task. Map Herdr done and Claude Stop to
+Ready; retain raw status for diagnostics. Process exit means Exited, not goal
+completion. Never infer completion or success from idle/disconnected/stale
+state.
+
+Enumerate Codex's live thread registry with pagination and metadata-only reads.
+Also enumerate descendants of live roots with explicit child source filters;
+unloaded children remain discoverable without being labeled completed. Default
+thread/list queries exclude sub-agents. Preserve parent thread IDs, child
+identities and nicknames; do not deduplicate by name or route every child to its
+parent. Focus must use the selected child's technical thread ID, and hardware
+focus errors must surface in the GUI. Test pagination, repeated cursors,
+parent/child identity, idle-to-working transitions, unavailable focus and
+transport errors. OS deep-link dispatch succeeding is not proof the intended
+view appeared.
+
+## Review, CI and release requirements
+
+CI runs in order: Prek, Build, Test. Run Prek only on `ubuntu-latest`, then gate
+a matrix of `[ubuntu-latest, windows-latest, macos-latest]` on its success. Keep
+Build followed by Test on the same matrix runner so they reuse the Cargo target
+directory and frontend assets. Compile test binaries during Build without
+running them. Cache only Cargo dependencies and compilation outputs, shared by
+OS, architecture and toolchain; do not cache the frontend. Prek restores the
+Linux cache, while successful matrix jobs save it after all checks complete.
+Pre-commit (`prek run -a`) runs lint, formatting and dependency checks only; do
+not add tests to its hooks. Bun runs frontend tests and Cargo runs backend
+tests. TypeScript must not implement hardware effects; keep those in Rust behind
+typed IPC. `make test` orchestrates the frontend and backend test suites
+serially. Do not include formatting, Clippy or production builds in `make test`;
+CI runs those as separate steps. CI also tests all backend features after
+building frontend assets for `custom-protocol`. All AUTOMATED tests must run
+without hardware, agent applications, provider accounts, API secrets, OS input
+permissions or external network services. Inject device transports and OS-input
+backends; use loopback HTTP/WebSocket fixtures. Manual `--hardware-smoke`
+diagnostics are separate and never invoked by CI or hooks. Do not retain ignored
+live-only tests that require a user's running session.
+
+Before committing review work, finish actionable corrections, run the complete
+suite and `prek run -a`, and record failures and platform limits. Use the review
+skill when explicitly invoked. A configured matrix is not an observed hosted CI
+run. Never claim Linux/Windows validation from a macOS-only local run.
+
+Run CI on pushes to `master` and pull requests targeting `master`. The release
+workflow runs only on `v*` tag pushes and calls the reusable CI checks before
+packaging. Do not enable manual dispatch for either workflow.
+
+Tag releases must validate all manifest versions, pass the complete three-OS
+matrix and build every installer before publishing. Use release version tags for
+third-party GitHub Actions and pre-commit hooks; commit-hash pinning is not
+used. Keep CI read-only; grant contents:write only to the final publisher. Do
+not publish partial matrix releases. Do not create/push tags or a repository
+merely because release automation was requested.
+
+Do not write tests that parse or duplicate GitHub Actions configuration,
+pre-commit configuration, Makefile recipes or manifest constants. Use actionlint
+and yamllint for workflow validation. Test executable behavior with meaningful
+inputs and outcomes. Do not add CI or release-tooling test suites.
+
+Remove unused vulnerable dependencies instead of suppressing their advisories.
+Transitive maintenance exceptions must identify the advisory, upstream
+dependency and removal condition; keep unresolved audit warnings visible.
+
+Keep runtime-linking policy in `WindowsAttributes::static_vc_runtime(true)`; the
+build script clears the CLI-injected environment override before applying this
+policy. Keep build configuration fields supported by the project's Tauri CLI.
+Keep API credentials scoped to provider ID, type and normalized endpoint so
+imported configuration cannot redirect a previously stored secret. Raw USB
+traces are opt-in and may contain private artwork. Sanitize fixtures before
+commits; exclude vendor installers and generated build/schema outputs.
+
+## Shell workflow data boundary
+
+Never interpolate previous AI, clipboard or file output into shell source. Shell
+actions reject `{{input}}` and receive the prior result only through the
+`OPENSTREAMDECK_INPUT` child environment variable. On Unix, quoted parameter
+expansion such as `printf '%s' "$OPENSTREAMDECK_INPUT"` reads literal data. On
+Windows, the child program must read its environment directly; expanding
+`%OPENSTREAMDECK_INPUT%` into cmd command text is not a safe data boundary. Do
+not execute model-generated commands implicitly. Test attempted metacharacter
+input through the production launcher, and test template rejection before any
+effect is dispatched.

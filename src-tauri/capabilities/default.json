@@ -1,0 +1,6 @@
+{
+  "identifier": "main",
+  "description": "OpenStreamDeck desktop controls",
+  "windows": ["main"],
+  "permissions": ["core:default", "dialog:default", "autostart:default"]
+}

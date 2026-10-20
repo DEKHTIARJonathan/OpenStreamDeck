@@ -1,0 +1,33 @@
+[workspace]
+members = ["src-tauri"]
+default-members = ["src-tauri"]
+resolver = "2"
+
+[workspace.package]
+license = "GPL-3.0-or-later"
+
+# =========================================================================
+# DEVELOPMENT PROFILE: Built for maximum compilation and rebuild speed
+# =========================================================================
+[profile.dev]
+opt-level = 0
+debug = 2
+strip = "none"
+lto = false
+incremental = true
+codegen-units = 256
+
+[profile.dev.build-override]
+opt-level = 0
+debug = true
+codegen-units = 256
+
+# =========================================================================
+# RELEASE PROFILE: Optimized to minimize runtime RAM usage and binary size
+# =========================================================================
+[profile.release]
+opt-level = "z"     # Optimize aggressively for minimal binary size in RAM
+lto = true          # Cross-crate dead-code elimination to strip unused RAM overhead
+panic = "abort"     # Removes heavy stack-unwinding logic entirely
+strip = true        # Completely strips symbols so they don't occupy virtual memory
+codegen-units = 1   # Gives LTO maximum context to shrink the runtime footprint

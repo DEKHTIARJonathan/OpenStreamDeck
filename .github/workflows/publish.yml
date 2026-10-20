@@ -1,0 +1,106 @@
+---
+name: Release
+run-name: Release ${{ github.ref_name }}
+'on':
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - name: Require matching release tag and manifest versions
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: bun scripts/release.ts version
+  quality:
+    needs: [version]
+    uses: ./.github/workflows/ci.yml
+  bundle:
+    needs: [version, quality]
+    name: Package ${{ matrix.platform }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            os: ubuntu-latest
+            args: --bundles deb,appimage
+            bundle-root: target/release/bundle
+          - platform: macos
+            os: macos-latest
+            args: --target universal-apple-darwin --bundles dmg
+            bundle-root: target/universal-apple-darwin/release/bundle
+          - platform: windows
+            os: windows-latest
+            args: --bundles msi,nsis
+            bundle-root: target/release/bundle
+    env:
+      CI: 'true'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_TERM_COLOR: always
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Install both macOS architectures
+        if: runner.os == 'macOS'
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - name: Build installers
+        env:
+          # Ad-hoc signing is not Developer ID signing or notarization.
+          APPLE_SIGNING_IDENTITY: '-'
+        run: bun run tauri build --ci ${{ matrix.args }} -- --locked
+      - name: Verify expected bundles and stage only release assets
+        env:
+          RELEASE_PLATFORM: ${{ matrix.platform }}
+          RELEASE_BUNDLE_ROOT: ${{ matrix.bundle-root }}
+        run: bun scripts/release.ts stage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ matrix.platform }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: [version, quality, bundle]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: installers-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify all platforms and write SHA256SUMS
+        run: bun scripts/release.ts verify
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: bun scripts/release.ts publish

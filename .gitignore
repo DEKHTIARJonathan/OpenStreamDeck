@@ -1,0 +1,15 @@
+node_modules/
+dist/
+src-tauri/target/
+target/
+*.tsbuildinfo
+*.pkg
+*.dmg
+.DS_Store
+test-results/
+playwright-report/
+
+# Tauri generates platform-specific ACL schemas at build time.
+src-tauri/gen/
+release-assets/
+release-notes.txt

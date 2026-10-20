@@ -1,0 +1,48 @@
+[package]
+name = "openstreamdeck"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+default-run = "openstreamdeck"
+
+[lib]
+name = "openstreamdeck_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[features]
+default = []
+custom-protocol = ["tauri/custom-protocol"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+base64 = "0.23"
+enigo = { version = "0.6", features = ["serde"] }
+futures-util = "0.3"
+hidapi = "2.6"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif"] }
+keyring = { version = "4.2", default-features = false, features = ["v1"] }
+open = "5"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+arboard = { version = "3", default-features = false }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.30"
+uuid = { version = "1", features = ["v4"] }
+resvg = "0.48"
+
+[dev-dependencies]
+tempfile = "3"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Diagnostics_ToolHelp"] }

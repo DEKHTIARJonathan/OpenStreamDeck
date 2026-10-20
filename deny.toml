@@ -1,0 +1,40 @@
+# Audit every resolved target, including Linux and Windows when run on macOS.
+[graph]
+all-features = true
+
+[advisories]
+unmaintained = "all"
+# These transitive maintenance notices have no compatible fix in Tauri 2.
+# Keep each exception explicit; new advisories still fail the check.
+ignore = [
+    { id = "RUSTSEC-2024-0370", reason = "proc-macro-error 1.x is required by glib-macros 0.18 in Tauri 2's GTK3 stack; remove when the dependency is no longer required." },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant 5.x is required by zbus 5 in tauri-plugin-single-instance 2 and keyring 4 Secret Service; remove when both use zbus 6." },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names 4.x is required by zbus 5 in tauri-plugin-single-instance 2 and keyring 4 Secret Service; remove when both use zbus 6." },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive 5.x is required by zbus 5 in tauri-plugin-single-instance 2 and keyring 4 Secret Service; remove when both use zbus 6." },
+]
+
+[licenses]
+# Explicit policy for the licenses present in the locked dependency graph.
+# Distribution obligations still apply; see THIRD-PARTY-NOTICES.md.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CDLA-Permissive-2.0",
+    "GPL-3.0-or-later",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Zlib",
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
