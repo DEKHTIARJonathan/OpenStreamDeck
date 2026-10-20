@@ -112,6 +112,7 @@ export interface Navigation {
   revision: number;
 }
 export interface Snapshot {
+  onboarding?: boolean;
   update?: import("./UpdatePanel").UpdateStatus;
   platform?: string;
   page_context?: PageContext;

@@ -2714,3 +2714,248 @@ dialog.app-picker::backdrop {
 .app-page-create-footer .row {
   justify-content: flex-end;
 }
+
+/* First-install setup: one decision at a time, with a persistent action area. */
+.onboarding-dialog {
+  width: 584px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  color: #e8eaef;
+  border: 1px solid #363e49;
+  border-radius: 24px;
+  background:
+    radial-gradient(ellipse at 5% 0%, #233a37 0%, transparent 48%), #191d24;
+  box-shadow:
+    0 32px 100px #0009,
+    inset 0 1px 0 #ffffff08;
+  overflow: hidden;
+}
+.onboarding-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  animation: setup-appear 180ms ease-out;
+}
+.onboarding-dialog::backdrop {
+  background: #070b12b8;
+  backdrop-filter: blur(9px);
+}
+.onboarding-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 28px 32px 22px;
+}
+.onboarding-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-weight: 650;
+  font-size: 14px;
+  letter-spacing: -0.2px;
+}
+.onboarding-brand small {
+  display: block;
+  margin-top: 5px;
+  color: #a0b4b0;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.7px;
+}
+.onboarding-skip {
+  border-color: transparent;
+  background: transparent;
+  color: #bbc3cc;
+  font-size: 12px;
+  min-height: 44px;
+}
+.onboarding-progress {
+  display: flex;
+  gap: 12px;
+  padding: 0 32px;
+  flex-shrink: 0;
+}
+.onboarding-progress > div {
+  flex: 1;
+  color: #99a2af;
+}
+.onboarding-progress > div > span {
+  display: block;
+  height: 3px;
+  border-radius: 3px;
+  background: #343c46;
+}
+.onboarding-progress > div.active > span {
+  background: #b3e8d8;
+}
+.onboarding-progress small {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 11px;
+}
+.onboarding-progress .active {
+  color: #c2e5db;
+}
+.onboarding-body {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 30px 32px 24px;
+}
+.onboarding-symbol {
+  width: 64px;
+  height: 64px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  border: 1px solid #b3e8d825;
+  background: linear-gradient(145deg, #b3e8d818, #b3e8d805);
+  color: #b3e8d8;
+  box-shadow: inset 0 1px 0 #ffffff09;
+  margin-bottom: 25px;
+}
+.onboarding-eyebrow {
+  color: #a6b5b3;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.8px;
+  margin: 0 0 12px;
+}
+.onboarding-dialog h2 {
+  font-size: 32px;
+  line-height: 1.12;
+  font-weight: 650;
+  letter-spacing: -1.1px;
+  max-width: 420px;
+  margin: 0 0 16px;
+  outline: none;
+}
+.onboarding-description {
+  font-size: 15px;
+  line-height: 1.65;
+  color: #b8c0cb;
+  margin: 0;
+}
+.onboarding-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  background: #10151a80;
+  border: 1px solid #ffffff0c;
+  border-radius: 14px;
+  padding: 18px;
+  margin-top: 25px;
+}
+.onboarding-detail > svg {
+  color: #b3e8d8;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.onboarding-detail strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.onboarding-detail p {
+  color: #aeb8c6;
+  line-height: 1.65;
+  font-size: 12px;
+  margin: 6px 0 0;
+}
+.onboarding-consequence {
+  color: #a7b0bd;
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 18px 0 0;
+}
+.onboarding-error {
+  padding: 12px 14px;
+  border: 1px solid #e89d9d42;
+  border-radius: 10px;
+  background: #e89d9d0a;
+  color: #ffc1bf;
+  line-height: 1.6;
+  margin: 16px 0 0;
+  overflow-wrap: anywhere;
+}
+.onboarding-footer {
+  flex-shrink: 0;
+  border-top: 1px solid #ffffff0b;
+  padding: 18px 32px 22px;
+  background: #171b22;
+}
+.onboarding-footer-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #9eabb8;
+  font-size: 11px;
+  margin-bottom: 14px;
+}
+.onboarding-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.onboarding-actions button {
+  min-height: 44px;
+  padding: 10px 16px;
+  border-radius: 10px;
+}
+.onboarding-actions .onboarding-back {
+  margin-right: auto;
+  padding: 10px 12px;
+}
+.onboarding-actions .onboarding-reopen {
+  flex-basis: 100%;
+  border: 0;
+  background: transparent;
+  color: #bdc9d6;
+  font-size: 12px;
+  min-height: 32px;
+  padding: 4px;
+}
+.onboarding-dialog button:focus-visible {
+  outline: 2px solid #b3e8d8;
+  outline-offset: 3px;
+}
+@keyframes setup-appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-dialog[open] {
+    animation: none;
+  }
+}
+@media (max-width: 600px), (max-height: 700px) {
+  .onboarding-header {
+    padding: 18px 22px 14px;
+  }
+  .onboarding-progress {
+    padding: 0 22px;
+  }
+  .onboarding-body {
+    padding: 22px;
+  }
+  .onboarding-footer {
+    padding: 14px 22px 18px;
+  }
+  .onboarding-dialog h2 {
+    font-size: 28px;
+  }
+  .onboarding-symbol {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    margin-bottom: 18px;
+  }
+}

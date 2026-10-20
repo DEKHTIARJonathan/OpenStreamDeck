@@ -514,3 +514,45 @@ playback are not implemented capabilities. Native tray close/reopen tests must
 verify actual webview release and process termination; browser tests do not
 establish those behaviors. Windows Herdr foreground activation and non-macOS
 Codex focus are explicitly unavailable.
+
+## First-launch onboarding
+
+`onboarding::tests` exercises the production installation-state loader and
+completion path with temporary app-data directories and injected login and
+permission boundaries. It covers new installs, interrupted setup after a config
+save, existing config/backup migration, completion and skip persistence across
+configuration removal, invalid state, initial/completion write failures,
+verified login saves, rollback on config failure and repeated completion. A
+native retry regression retains the first-install classification if an initial
+marker write fails and a background action saves configuration before retry. A
+native application-state test checks that installation blocks both login changes
+and skip persistence and allows completion after recovery. Platform policy tests
+cover macOS granted/required access, Windows, X11 and Wayland. Request-routing
+tests reject macOS settings requests on other platforms, expose opener failures
+and never infer trust from successful opening.
+
+`tests/onboarding.spec.ts` exercises the actual React dialog through browser IPC
+fixtures: macOS request/recheck/focus-return, explicit enable, skip and reload,
+interrupted setup, Windows/Linux guidance, Wayland limitations, existing login
+registration, unavailable login adapter, window-mode copy, visible permission
+and completion errors, retry, global skip, Escape, keyboard focus containment
+and restoration, backdrop behavior and update-notice priority. Registration
+rechecks on all three platforms and recovery from login-adapter errors preserve
+explicit startup consent. Compact viewport checks keep actions reachable.
+Browser captures are design evidence only.
+
+Native trust queries and the OS settings opener are macOS-only. Automated tests
+do not grant real permissions, register the user's app at login or send volume
+keys. Real Accessibility approval/revocation, settings navigation, signed app
+identity across upgrades, login/logout, Windows elevated-app restrictions, Linux
+X11/Wayland behavior and physical N3 volume control remain manual OS and
+hardware checks. Existing installations without any saved configuration or
+backup cannot be distinguished from a fresh installation and receive setup.
+
+Local macOS validation on 2026-10-20 passed the production frontend build, 84
+frontend unit tests, all 86 browser tests (including 15 onboarding cases), and
+153 Rust tests with all features enabled. Both onboarding steps were visually
+inspected at 1060 × 720; compact 600 × 520 browser checks kept footer actions
+visible. Native checks used synthetic signing environment values and temporary
+fixtures outside the checkout. No actual OS permission, login item, installed
+application or attached device was changed by these checks.

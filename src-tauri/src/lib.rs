@@ -11,6 +11,7 @@ pub mod focus;
 pub mod foreground;
 pub mod model;
 pub mod navigation;
+mod onboarding;
 pub mod page_context;
 #[cfg(windows)]
 pub mod process_tree;
@@ -112,6 +113,26 @@ impl AppState {
         Ok(brightness_changed)
     }
 
+    fn finish_setup(
+        &self,
+        setup: &mut onboarding::Setup,
+        login: &impl settings::LoginRegistration,
+        enable_login: bool,
+    ) -> Result<(), String> {
+        // Use the same gate and lock order as configuration saves/installations.
+        let _active = self.active.lock().unwrap();
+        if self.update_installing.load(Ordering::SeqCst) {
+            return Err("An update is in progress. Finish setup after it completes.".into());
+        }
+        onboarding::finish(
+            &self.dir,
+            setup,
+            &mut self.config.lock().unwrap(),
+            login,
+            enable_login,
+        )
+    }
+
     pub fn send(&self, command: device::DeviceCommand) -> Result<(), String> {
         if command.requires_connection() && !self.device.lock().unwrap().connected {
             return Err("N3 is not connected".into());
@@ -123,6 +144,7 @@ impl AppState {
 }
 #[derive(serde::Serialize)]
 struct Snapshot {
+    onboarding: bool,
     platform: &'static str,
     navigation: navigation::Navigation,
     config: Config,
@@ -146,6 +168,7 @@ fn snapshot(app: tauri::AppHandle, state: tauri::State<AppState>) -> Snapshot {
     let settings_error = state.settings_error.lock().unwrap().clone();
     let page_context = state.page_context.lock().unwrap().clone();
     Snapshot {
+        onboarding: app.state::<OnboardingState>().0.lock().unwrap().pending(),
         update: app.state::<Arc<updates::Service>>().status(),
         platform: std::env::consts::OS,
         navigation,
@@ -158,6 +181,45 @@ fn snapshot(app: tauri::AppHandle, state: tauri::State<AppState>) -> Snapshot {
         page_context,
     }
 }
+struct OnboardingState(Mutex<onboarding::State>);
+
+#[tauri::command]
+fn onboarding_status(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+) -> Result<onboarding::Status, String> {
+    let service = app.state::<OnboardingState>();
+    let mut setup = service.0.lock().unwrap();
+    Ok(onboarding::status(
+        setup.setup(&state.dir)?,
+        &settings::NativeLogin(&app),
+    ))
+}
+
+#[tauri::command]
+fn open_accessibility_settings() -> Result<(), String> {
+    onboarding::request_access(std::env::consts::OS, &onboarding::NativePermission)
+}
+
+#[tauri::command]
+fn finish_onboarding(
+    app: tauri::AppHandle,
+    state: tauri::State<AppState>,
+    enable_login: bool,
+) -> Result<(), String> {
+    let service = app.state::<OnboardingState>();
+    let mut setup = service.0.lock().unwrap();
+    let result = state.finish_setup(
+        setup.setup(&state.dir)?,
+        &settings::NativeLogin(&app),
+        enable_login,
+    );
+    drop(setup);
+    let config = state.config.lock().unwrap().clone();
+    let _ = app.emit("config", config);
+    result
+}
+
 #[tauri::command]
 fn set_view(state: tauri::State<AppState>, view: navigation::View) -> navigation::Navigation {
     navigation::select(&state, view)
@@ -416,6 +478,7 @@ pub fn run() {
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
+            app.manage(OnboardingState(Mutex::new(onboarding::State::new(&dir))));
             let (config, settings_error) =
                 settings::load(&dir, &settings::NativeLogin(app.handle()))
                     .map_err(std::io::Error::other)?;
@@ -549,6 +612,9 @@ pub fn run() {
             updates::skip_update,
             updates::install_update,
             snapshot,
+            onboarding_status,
+            open_accessibility_settings,
+            finish_onboarding,
             set_view,
             render_keys,
             list_applications,

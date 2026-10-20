@@ -31,6 +31,7 @@ import {
 import { call, native, on } from "./api";
 import ApplicationPicker from "./ApplicationPicker";
 import SettingsPanel from "./SettingsPanel";
+import Onboarding from "./Onboarding";
 import {
   UpdateInstallGuard,
   UpdatePrompt,
@@ -664,6 +665,17 @@ export default function App() {
   };
   return (
     <div className="app">
+      {snap?.onboarding && (
+        <Onboarding
+          paused={
+            !!updateStatus?.prompt_version ||
+            updateStatus?.phase === "downloading" ||
+            updateStatus?.phase === "installing" ||
+            (updateStatus?.phase === "installed" && !updateStatus.error)
+          }
+          menuBarOnly={snap.config.menu_bar_only}
+        />
+      )}
       <UpdatePrompt
         status={updateStatus}
         dirty={dirty}

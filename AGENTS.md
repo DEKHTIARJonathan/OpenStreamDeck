@@ -198,21 +198,21 @@ tuning is separate.
 
 ## Architecture
 
-| Boundary      | Location                                                                    | Responsibility                                                                                      |
-| ------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Editor        | `src/`                                                                      | React UI, typed IPC client, physical N3 editor, workflows, agents and settings                      |
-| Draft state   | `src/config-draft.ts`, `src/page-editor.ts`                                 | Reconcile native updates and saves without losing pending edits                                     |
-| Configuration | `model.rs`, `store.rs`                                                      | Configuration contracts, validation and persistence                                                 |
-| Packet format | `protocol.rs`                                                               | Pure byte encoding/decoding; no OS or UI effects                                                    |
-| Hardware      | `device.rs`, `diagnostics.rs`                                               | Vendor-interface HID lifecycle, serialized writes, display updates and explicit manual diagnostics  |
-| Pixels        | `artwork.rs`                                                                | Canonical renderer for native preview and device frames                                             |
-| Execution     | `engine.rs`, `actions.rs`, `process_tree.rs`                                | Local actions, workflow composition, cancellation and process cleanup                               |
-| Providers     | `ai.rs`                                                                     | Provider adapters; API credentials stay in the OS credential store                                  |
-| Sessions      | `agents.rs`, `codex_adapter.rs`, `focus.rs`                                 | Herdr/Codex interfaces, Claude lifecycle bridge and OS focus                                        |
-| Desktop       | `lib.rs`, `navigation.rs`, `settings.rs`, `applications.rs`, `macos_dev.rs` | IPC, lifecycle, window/tab state, login settings, application picker and macOS development identity |
-| Documentation | `docs/`                                                                     | Maintained guides, architecture, protocol and verification summaries                                |
-| Fixtures      | `tests/fixtures/`                                                           | Sanitized inputs consumed by automated tests                                                        |
-| Tooling       | `scripts/`                                                                  | Development and release utilities                                                                   |
+| Boundary      | Location                                                                                     | Responsibility                                                                                      |
+| ------------- | -------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Editor        | `src/`                                                                                       | React UI, typed IPC client, physical N3 editor, workflows, agents and settings                      |
+| Draft state   | `src/config-draft.ts`, `src/page-editor.ts`                                                  | Reconcile native updates and saves without losing pending edits                                     |
+| Configuration | `model.rs`, `store.rs`                                                                       | Configuration contracts, validation and persistence                                                 |
+| Packet format | `protocol.rs`                                                                                | Pure byte encoding/decoding; no OS or UI effects                                                    |
+| Hardware      | `device.rs`, `diagnostics.rs`                                                                | Vendor-interface HID lifecycle, serialized writes, display updates and explicit manual diagnostics  |
+| Pixels        | `artwork.rs`                                                                                 | Canonical renderer for native preview and device frames                                             |
+| Execution     | `engine.rs`, `actions.rs`, `process_tree.rs`                                                 | Local actions, workflow composition, cancellation and process cleanup                               |
+| Providers     | `ai.rs`                                                                                      | Provider adapters; API credentials stay in the OS credential store                                  |
+| Sessions      | `agents.rs`, `codex_adapter.rs`, `focus.rs`                                                  | Herdr/Codex interfaces, Claude lifecycle bridge and OS focus                                        |
+| Desktop       | `lib.rs`, `navigation.rs`, `settings.rs`, `onboarding.rs`, `applications.rs`, `macos_dev.rs` | IPC, lifecycle, window/tab state, login settings, application picker and macOS development identity |
+| Documentation | `docs/`                                                                                      | Maintained guides, architecture, protocol and verification summaries                                |
+| Fixtures      | `tests/fixtures/`                                                                            | Sanitized inputs consumed by automated tests                                                        |
+| Tooling       | `scripts/`                                                                                   | Development and release utilities                                                                   |
 
 Rust filenames are relative to `src-tauri/src/`. See
 [ARCHITECTURE.md](docs/ARCHITECTURE.md) for execution and data flow. These are
@@ -355,6 +355,19 @@ directions, invalid settings, OS/persistence failures, close/quit policy and
 login startup behavior with injected boundaries; verify native lifecycle
 separately from browser fixtures. Login launch opens the GUI when tray mode is
 off and stays in the tray when it is on.
+
+### First-launch setup
+
+Keep onboarding completion in native app data, separately from portable
+configuration and app version. Finish and Skip must persist before dismissing;
+updates, imports and window recreation must not reset it. Exempt existing saved
+configurations/backups before any first-run save. Explain skipped capabilities,
+verify macOS Accessibility through the OS trust query and never treat opening
+Settings as granting access. Windows/Linux receive relevant guidance instead of
+a macOS permission request. Launch at login remains an explicit optional choice
+through the verified, rollback-aware settings path and updater work gate. Test
+migration, interrupted setup, persistence/OS failures, retry, skip, platform
+routing, keyboard focus and update-dialog priority with synthetic boundaries.
 
 ### Performance evidence
 

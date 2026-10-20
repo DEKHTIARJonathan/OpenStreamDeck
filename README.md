@@ -210,6 +210,11 @@ builds read the GitHub feed. See the
 
 ### Make your first key
 
+On a new installation, a short setup walks through platform-specific input
+access and optional launch at login. You can skip either step; setup explains
+which controls may be unavailable and remembers your choice across updates. See
+[first-launch setup](docs/USAGE.md#first-launch-setup).
+
 1. **Connect the N3.** Close the vendor app first. OpenStreamDeck discovers the
    device automatically.
 2. **Choose a key.** Select **Open app or URL**, then **Choose an application**.

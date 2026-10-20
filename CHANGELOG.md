@@ -16,6 +16,9 @@ details are intentionally omitted.
 
 ### UI/UX
 
+- A clean, optional first-launch setup guides platform-specific input access and
+  launch at login, with clear skip choices remembered across updates.
+
 - Separate, aligned Applications and Pages rows make application contexts and
   their pages easier to manage.
 - Drag and drop to reorder pages, with visible Add page, Rename page and Delete

@@ -6,7 +6,7 @@ import { call, native, on } from "./api";
 
 const appIcon = new URL("../src-tauri/icons/source.svg", import.meta.url).href;
 
-function containDialogFocus(event: KeyboardEvent<HTMLDialogElement>) {
+export function containDialogFocus(event: KeyboardEvent<HTMLDialogElement>) {
   if (event.key !== "Tab") return;
   const dialog = event.currentTarget;
   const controls = [

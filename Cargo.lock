@@ -3106,8 +3106,8 @@ version = "0.1.0"
 dependencies = [
  "arboard",
  "base64 0.23.1",
- "dotenvy",
  "block2",
+ "dotenvy",
  "enigo",
  "futures-util",
  "hidapi",

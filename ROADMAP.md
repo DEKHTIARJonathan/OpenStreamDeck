@@ -39,6 +39,12 @@ classes; Wayland detection is unavailable. Automated evidence and OS/physical
 validation limits are recorded under
 [application-specific pages](docs/TEST-MATRIX.md#application-specific-pages).
 
+First-install setup guides input access and optional automatic startup, with
+macOS trust verification and Windows/Linux guidance. Completion is stored
+outside portable configuration, so saved installations and updates do not repeat
+setup. See [onboarding coverage](docs/TEST-MATRIX.md#first-launch-onboarding)
+for automated evidence and remaining OS checks.
+
 ## Next
 
 ### Finish physical N3 validation

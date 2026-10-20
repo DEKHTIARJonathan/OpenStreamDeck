@@ -5,6 +5,50 @@ the device is reattached. Close the vendor controller application first so only
 one application owns the device. Browser preview supports editing, but cannot
 run native actions, access credentials or verify the physical display.
 
+## First-launch setup
+
+A new installation opens a short, optional setup dialog before you edit your
+first key. It walks through controls and automatic startup:
+
+- **macOS:** Open System Settings to allow Accessibility access for
+  OpenStreamDeck. Volume, media controls and shortcuts use native input and may
+  be unavailable without it. Enable the app under Privacy & Security →
+  Accessibility (add it with **+** if needed), then return. Setup checks the OS
+  status again on return; **Check again** also refreshes it. Opening Settings
+  alone does not count as granting access. You can reopen Settings from setup.
+- **Windows:** there is no macOS Accessibility request. Input to applications
+  running as administrator can still be restricted; individual action failures
+  are reported by the app.
+- **Linux:** there is no macOS Accessibility request. This build uses X11 input;
+  Wayland sessions receive an explicit warning that volume, media keys and
+  shortcuts may not reach Wayland applications. N3 USB access needs the included
+  [udev rule](../src-tauri/bundle/70-openstreamdeck.rules).
+
+The second step offers **Enable & finish** to start OpenStreamDeck when you sign
+in. This changes the native login registration immediately and saves the
+preference. Tray mode starts in the menu bar/system tray; with tray mode off,
+the editor opens. Existing login registration is preserved. **Not now** leaves
+it unchanged. If startup is off, open OpenStreamDeck yourself before using the
+deck. You can change this later in **Settings → General → Launch at login**,
+then save. Returning from OS settings refreshes registration on every platform.
+If registration cannot be read, **Try again** rechecks it without enabling
+startup; **Not now** still lets you skip.
+
+**Skip for now** advances past the controls step, and **Skip setup** finishes
+without changing login registration. Escape follows the current step's skip
+choice. Permission and save errors stay visible so you can retry. Skipping does
+not grant Accessibility access.
+
+Completion and skipping are remembered in `onboarding.json` in the native app
+data directory, separately from exported pages and preferences. Restarting,
+reopening the window, importing configuration and installing an update do not
+reset setup. Closing the app before finishing or skipping resumes setup next
+time. Existing installations with a saved configuration or backup are exempt
+when this feature is first introduced. Deleting app data makes an installation
+new again; uninstalling and reinstalling while retaining app data retains the
+completed choice. A required software-update dialog temporarily takes priority
+and setup resumes afterward.
+
 ## Pages and controls
 
 In Deck, select an LCD key or the third ordinary button to edit its action.
