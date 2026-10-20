@@ -45,6 +45,24 @@ pub(crate) fn foreground(host: &impl WindowHost) -> Result<(), String> {
     host.focus()
 }
 
+pub(crate) fn tray_click(
+    event: &tauri::tray::TrayIconEvent,
+    host: &impl WindowHost,
+) -> Result<(), String> {
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
+    if matches!(
+        event,
+        TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+        }
+    ) {
+        foreground(host)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn dashboard(state: &AppState, host: &impl WindowHost) -> Result<(), String> {
     // Store before creating a webview: its startup snapshot must recover the
     // requested tab even if the navigation event arrives before JS is listening.
@@ -165,6 +183,82 @@ mod tests {
         fn navigate(&self, request: &Navigation) -> Result<(), String> {
             assert_eq!(request, &*self.state.navigation.lock().unwrap());
             self.record("navigate")
+        }
+    }
+
+    fn click(
+        button: tauri::tray::MouseButton,
+        button_state: tauri::tray::MouseButtonState,
+    ) -> tauri::tray::TrayIconEvent {
+        tauri::tray::TrayIconEvent::Click {
+            id: "test-tray".into(),
+            position: tauri::PhysicalPosition::new(10.0, 10.0),
+            rect: tauri::Rect {
+                position: tauri::PhysicalPosition::new(0, 0).into(),
+                size: tauri::PhysicalSize::new(20, 20).into(),
+            },
+            button,
+            button_state,
+        }
+    }
+
+    #[test]
+    fn left_tray_click_restores_or_recreates_window_without_changing_navigation() {
+        use tauri::tray::{MouseButton, MouseButtonState};
+        for exists in [false, true] {
+            let (tx, rx) = sync_channel(1);
+            let state = AppState::new(PathBuf::new(), Config::default(), tx);
+            let navigation = select(&state, View::Agents);
+            let host = Window {
+                state: &state,
+                exists: Cell::new(exists),
+                calls: RefCell::default(),
+                fail: None,
+            };
+            for button in [MouseButton::Right, MouseButton::Middle, MouseButton::Left] {
+                tray_click(&click(button, MouseButtonState::Down), &host).unwrap();
+                if button != MouseButton::Left {
+                    tray_click(&click(button, MouseButtonState::Up), &host).unwrap();
+                }
+            }
+            assert!(
+                host.calls.borrow().is_empty(),
+                "right-click must leave foregrounding to the menu"
+            );
+            tray_click(&click(MouseButton::Left, MouseButtonState::Up), &host).unwrap();
+            assert_eq!(
+                *host.calls.borrow(),
+                [
+                    "activate",
+                    if exists { "reuse" } else { "create" },
+                    "unminimize",
+                    "show",
+                    "focus"
+                ]
+            );
+            assert_eq!(*state.navigation.lock().unwrap(), navigation);
+            assert!(!state.agent_display.load(Ordering::Relaxed));
+            assert!(rx.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn tray_click_propagates_foreground_failures() {
+        use tauri::tray::{MouseButton, MouseButtonState};
+        for failure in ["activate", "create", "unminimize", "show", "focus"] {
+            let (tx, _) = sync_channel(1);
+            let state = AppState::new(PathBuf::new(), Config::default(), tx);
+            select(&state, View::Agents);
+            let host = Window {
+                state: &state,
+                exists: Cell::new(false),
+                calls: RefCell::default(),
+                fail: Some(failure),
+            };
+            assert_eq!(
+                tray_click(&click(MouseButton::Left, MouseButtonState::Up), &host).unwrap_err(),
+                format!("Fixture: {failure} failed")
+            );
         }
     }
 

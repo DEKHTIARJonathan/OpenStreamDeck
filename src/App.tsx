@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { call, native, on } from "./api";
 import ApplicationPicker from "./ApplicationPicker";
+import SettingsPanel from "./SettingsPanel";
 import DeletePageDialog from "./DeletePageDialog";
 import { removePage, renamePage } from "./page-editor";
 import RenamePageDialog from "./RenamePageDialog";
@@ -354,7 +355,6 @@ export default function App() {
     [lastInput, setLastInput] = useState<InputEvent | null>(null),
     [workflowId, setWorkflowId] = useState("summarize"),
     [stepIndex, setStepIndex] = useState(0),
-    [keys, setKeys] = useState<Record<string, string>>({}),
     [prompt, setPrompt] = useState("");
   const [renameTarget, setRenameTarget] = useState<{
     id: string;
@@ -423,6 +423,7 @@ export default function App() {
         const s = await call<Snapshot>("snapshot");
         if (!disposed) {
           setSnap(s);
+          if (s.settings_error) fail(s.settings_error);
           setEditor((current) => receiveConfig(current, s.config));
           applyNavigation(s.navigation);
         }
@@ -635,7 +636,7 @@ export default function App() {
                     ? "A SHORTCUT FROM IDEA TO ACTION"
                     : view === "Agents"
                       ? "YOUR AGENTS, AT A GLANCE"
-                      : "YOUR PAGES"}
+                      : "DESIGNED AROUND YOU"}
               </div>
               <h1>{view === "Deck" ? "Your command center" : view}</h1>
               <p>
@@ -645,7 +646,7 @@ export default function App() {
                     ? "Connect inputs, models and actions. Put a workflow on any key."
                     : view === "Agents"
                       ? "Live agent activity, including sub-agents. Ready means between turns; it does not mean the task is complete."
-                      : "Tune your device and connect your AI providers."}
+                      : "A few thoughtful adjustments. A deck that feels like yours."}
               </p>
             </div>
             {view === "Deck" && (
@@ -1371,172 +1372,14 @@ export default function App() {
             </>
           )}
           {view === "Settings" && (
-            <div className="settings-layout">
-              <section className="panel">
-                <div className="panel-title">N3 device</div>
-                <p className="muted">{snap.device.message}</p>
-                <p className="muted">
-                  Connects automatically at launch and reconnects when the N3 is
-                  plugged in.
-                </p>
-                <Field label="Sleep after device inactivity (minutes; 0 disables)">
-                  <input
-                    type="number"
-                    min="0"
-                    max="1440"
-                    value={w.sleep_minutes}
-                    onChange={(e) =>
-                      change((w) => {
-                        w.sleep_minutes = +e.target.value;
-                      })
-                    }
-                  />
-                </Field>
-                <div className="row">
-                  <Field label="Image size">
-                    <select
-                      value={w.image_size}
-                      onChange={(e) =>
-                        change((w) => {
-                          w.image_size = +e.target.value;
-                        })
-                      }
-                    >
-                      {[64, 72, 85, 96, 112, 128].map((n) => (
-                        <option key={n} value={n}>
-                          {n} × {n}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Image rotation">
-                    <select
-                      value={w.rotation}
-                      onChange={(e) =>
-                        change((w) => {
-                          w.rotation = +e.target.value;
-                        })
-                      }
-                    >
-                      {[0, 90, 180, 270].map((n) => (
-                        <option key={n} value={n}>
-                          {n}°
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
-                <p className="muted">
-                  Default image geometry is 64 × 64 pixels with 90° clockwise
-                  rotation. Check the display on your device; geometry varies by
-                  firmware.
-                </p>
-                <hr />
-                <Field label="Page name">
-                  <input
-                    value={page.name}
-                    onChange={(e) =>
-                      change((w) => {
-                        w.pages.find((p) => p.id === w.active_page)!.name =
-                          e.target.value;
-                      })
-                    }
-                  />
-                </Field>
-                <p className="muted">
-                  Local data: <code>{snap.data_dir}</code>
-                </p>
-                <p className="muted">
-                  Uses the operating system’s HID driver. Linux permissions are
-                  supplied as a udev rule.
-                </p>
-              </section>
-              <section>
-                <h2>AI providers</h2>
-                <p className="muted">
-                  Choose your own model. API keys stay in your operating
-                  system’s credential store and are bound to the provider
-                  endpoint. Save settings before changing credentials.
-                </p>
-                {w.providers.map((p) => (
-                  <section className="panel provider" key={p.id}>
-                    <div className="panel-title">
-                      <span>{p.name}</span>
-                      <span className="badge">{p.kind}</span>
-                    </div>
-                    <Field label="Endpoint">
-                      <input
-                        value={p.endpoint}
-                        onChange={(e) =>
-                          change((w) => {
-                            w.providers.find((v) => v.id === p.id)!.endpoint =
-                              e.target.value;
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="Model ID">
-                      <input
-                        value={p.model}
-                        placeholder="Enter a model ID available to your account"
-                        onChange={(e) =>
-                          change((w) => {
-                            w.providers.find((v) => v.id === p.id)!.model =
-                              e.target.value;
-                          })
-                        }
-                      />
-                    </Field>
-                    <Field label="API key">
-                      <input
-                        type="password"
-                        autoComplete="off"
-                        value={keys[p.id] || ""}
-                        placeholder="Enter a new key to save"
-                        onChange={(e) =>
-                          setKeys((k) => ({ ...k, [p.id]: e.target.value }))
-                        }
-                      />
-                    </Field>
-                    <div className="row">
-                      <button
-                        disabled={!keys[p.id] || dirty}
-                        onClick={async () => {
-                          try {
-                            await call("set_provider_key", {
-                              provider: p.id,
-                              key: keys[p.id],
-                            });
-                            setKeys((k) => ({ ...k, [p.id]: "" }));
-                            setNotice("Key saved securely");
-                          } catch (e) {
-                            fail(e);
-                          }
-                        }}
-                      >
-                        Save key
-                      </button>
-                      <button
-                        disabled={dirty}
-                        onClick={async () => {
-                          try {
-                            await call("set_provider_key", {
-                              provider: p.id,
-                              key: "",
-                            });
-                            setNotice("Stored key removed");
-                          } catch (e) {
-                            fail(e);
-                          }
-                        }}
-                      >
-                        Remove stored key
-                      </button>
-                    </div>
-                  </section>
-                ))}
-              </section>
-            </div>
+            <SettingsPanel
+              config={w}
+              snapshot={snap}
+              dirty={dirty}
+              change={change}
+              fail={fail}
+              notice={setNotice}
+            />
           )}
         </div>
       </main>

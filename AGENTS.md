@@ -208,10 +208,25 @@ into tiny text. The browser-only design preview is not evidence of hardware
 pixel fidelity.
 
 Connect the N3 immediately at launch and retry discovery/reconnect
-automatically. Explicit Disconnect applies to the current process. Closing the
-GUI must release its webview while USB, actions and monitoring remain running
-behind the tray icon; reopening must recreate the window from current native
-state. Quit must terminate the app.
+automatically. Explicit Disconnect applies to the current process. With Menu bar
+only enabled, closing the GUI must release its webview while USB, actions and
+monitoring remain running behind the tray icon; reopening must recreate the
+window from current native state. With Menu bar only disabled, closing the main
+window quits the app. Explicit Quit always terminates it. Left-clicking the tray
+icon must immediately restore or recreate and foreground the GUI without opening
+a menu; right-click opens the tray menu. Cover both mouse phases and buttons,
+window restoration/creation and OS failures at the production boundary. Preserve
+tray mode by default for existing configurations; automatic sleep defaults to 0
+(disabled), without overwriting an existing sleep preference.
+
+Settings uses General, Device and Agents & AI tabs. Launch at login must both
+register and unregister through the native OS adapter, verify the resulting
+state, and roll back registration if saving fails. Read OS registration at
+startup so external login-item changes are respected. Cover both toggle
+directions, invalid settings, OS/persistence failures, close/quit policy and
+login startup behavior with injected boundaries; verify native lifecycle
+separately from browser fixtures. Login launch opens the GUI when tray mode is
+off and stays in the tray when it is on.
 
 Keep memory claims measured. Record platform, build, connected hardware, active
 adapters/workflows, cold background versus closed window, and metric. macOS

@@ -74,10 +74,19 @@ may contain private artwork; diagnostic logs belong in app data.
 
 ## Windows and agent state
 
-Closing the main window destroys its webview while USB, actions and monitoring
-continue behind the tray. Reopening constructs a new window from current native
-state; Quit terminates the app. Explicit Disconnect applies to the current
-process. A new launch enables discovery again.
+With `menu_bar_only` enabled (default), closing the main window destroys its
+webview while USB, actions and monitoring continue behind the tray. Reopening
+constructs a new window from current native state. Left-click uses the same
+foreground path (create, restore, show and focus); only right-click opens the
+tray menu. Tray clicks preserve the selected tab and LCD mode. When disabled,
+closing quits the process. Explicit Quit always exits. `settings.rs` owns the
+tested close and startup policies and the login-registration/persistence
+transaction. The native adapter calls Tauri autostart enable/disable and
+verifies the OS result before saving; errors roll back the OS change and
+preserve live configuration. Startup reads actual OS registration without
+re-enabling an externally removed entry. The login item uses `--from-autostart`:
+tray mode starts without a webview, otherwise it opens the window. Explicit
+Disconnect applies to the current process. A new launch enables discovery again.
 
 Native navigation stores a tab and monotonically increasing revision. The
 frontend subscribes before reading its startup snapshot and ignores older

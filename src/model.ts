@@ -35,6 +35,8 @@ export interface Config {
   image_size: number;
   rotation: number;
   sleep_minutes: number;
+  launch_at_login: boolean;
+  menu_bar_only: boolean;
 }
 export interface Device {
   connected: boolean;
@@ -79,6 +81,7 @@ export interface Snapshot {
   agents: Agent[];
   adapter_errors: string[];
   data_dir: string;
+  settings_error?: string | null;
 }
 export const action = (
   kind = "none",
@@ -152,7 +155,9 @@ export function defaultConfig(): Config {
     brightness: 60,
     image_size: 64,
     rotation: 90,
-    sleep_minutes: 15,
+    sleep_minutes: 0,
+    launch_at_login: false,
+    menu_bar_only: true,
     workflows: [
       {
         id: "summarize",
@@ -242,7 +247,11 @@ export function validateConfig(value: unknown): Config {
       checkAction(child, depth + 1),
     );
   };
-  const w = object(value, "config");
+  const w: Record<string, unknown> = {
+    launch_at_login: false,
+    menu_bar_only: true,
+    ...object(value, "config"),
+  };
   if (Object.keys(w).some((key) => !Object.hasOwn(defaultConfig(), key)))
     throw new Error("Unsupported config field");
   if (w.version !== 2 || !Array.isArray(w.pages) || !w.pages.length)
@@ -271,6 +280,9 @@ export function validateConfig(value: unknown): Config {
       text(provider[key], `provider ${key}`);
   }
   const result = w as unknown as Config;
+  for (const key of ["launch_at_login", "menu_bar_only"] as const) {
+    if (typeof result[key] !== "boolean") throw new Error(`Invalid ${key}`);
+  }
   if (!result.pages.some((p) => p.id === result.active_page))
     throw new Error("Active page is missing");
   if (

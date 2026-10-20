@@ -54,3 +54,31 @@ it("round-trips page configs and rejects unsupported fields and formats", () => 
     "Unsupported config field",
   );
 });
+
+it("defaults sleep off and preserves settings through import/export", () => {
+  const config = defaultConfig();
+  expect(config.sleep_minutes).toBe(0);
+  expect(config.launch_at_login).toBe(false);
+  expect(config.menu_bar_only).toBe(true);
+  for (const enabled of [true, false]) {
+    const next = {
+      ...config,
+      launch_at_login: enabled,
+      menu_bar_only: enabled,
+      sleep_minutes: 30,
+    };
+    expect(validateConfig(JSON.parse(JSON.stringify(next)))).toEqual(next);
+  }
+  const previous = JSON.parse(JSON.stringify(config));
+  delete previous.launch_at_login;
+  delete previous.menu_bar_only;
+  previous.sleep_minutes = 15;
+  expect(validateConfig(previous)).toEqual({ ...config, sleep_minutes: 15 });
+});
+
+it.each(["launch_at_login", "menu_bar_only"])("rejects malformed %s", (key) => {
+  for (const value of [null, "true", 0, [], {}])
+    expect(() => validateConfig({ ...defaultConfig(), [key]: value })).toThrow(
+      `Invalid ${key}`,
+    );
+});

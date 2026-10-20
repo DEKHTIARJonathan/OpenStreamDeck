@@ -22,9 +22,12 @@ Rust changes rebuild the native app. Do not start a second server on port 1420.
 Dev builds have no optimization or LTO and retain full debug information. The
 pinned JavaScript CLI is also available as `bun run tauri dev`.
 
-The N3 connects automatically. Closing the window leaves the controller in the
-system tray; use the tray Quit command to terminate it. A cold background launch
-is `openstreamdeck --background`.
+The N3 connects automatically. Settings → General controls **Launch at login**
+and **Menu bar only**. With Menu bar only enabled (the default), closing the
+window keeps the controller running in the system tray; with it disabled,
+closing quits the app. The tray Quit command always terminates it. A cold
+background launch is `openstreamdeck --background`. Automatic sleep defaults to
+0 (disabled), configurable in Settings → Device.
 
 ## Check and package
 

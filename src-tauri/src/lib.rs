@@ -13,6 +13,7 @@ pub mod navigation;
 #[cfg(windows)]
 pub mod process_tree;
 pub mod protocol;
+mod settings;
 pub mod store;
 
 use model::*;
@@ -42,6 +43,7 @@ pub struct AppState {
     pub agent_display: AtomicBool,
     pub agent_frame: Mutex<String>,
     pub navigation: Mutex<navigation::Navigation>,
+    pub settings_error: Mutex<Option<String>>,
 }
 impl AppState {
     fn new(dir: PathBuf, config: Config, tx: SyncSender<device::DeviceCommand>) -> Self {
@@ -63,6 +65,7 @@ impl AppState {
             agent_display: AtomicBool::new(false),
             agent_frame: Mutex::new(String::new()),
             navigation: Mutex::new(navigation::Navigation::default()),
+            settings_error: Mutex::new(None),
         }
     }
 
@@ -83,6 +86,7 @@ struct Snapshot {
     agents: Vec<AgentSession>,
     adapter_errors: Vec<String>,
     data_dir: String,
+    settings_error: Option<String>,
 }
 #[tauri::command]
 fn snapshot(state: tauri::State<AppState>) -> Snapshot {
@@ -93,6 +97,7 @@ fn snapshot(state: tauri::State<AppState>) -> Snapshot {
         agents: state.agents.lock().unwrap().clone(),
         adapter_errors: state.adapter_errors.lock().unwrap().clone(),
         data_dir: state.dir.display().to_string(),
+        settings_error: state.settings_error.lock().unwrap().clone(),
     }
 }
 #[tauri::command]
@@ -107,10 +112,15 @@ fn save_config(
 ) -> Result<(), String> {
     config.validate()?;
     let mut current = state.config.lock().unwrap();
-    store::save(&state.dir, &config)?;
     let brightness_changed = current.brightness != config.brightness;
-    *current = config.clone();
+    settings::save(
+        &state.dir,
+        &mut current,
+        config.clone(),
+        &settings::NativeLogin(&app),
+    )?;
     drop(current);
+    *state.settings_error.lock().unwrap() = None;
     state.agent_display.store(false, Ordering::Relaxed);
     // Persistence succeeded. A busy device queue must not turn this into a
     // misleading failed save or hide the authoritative config update.
@@ -311,7 +321,10 @@ pub fn run() {
                 }
                 return;
             }
-            if args.iter().any(|a| a == "--background") {
+            if args
+                .iter()
+                .any(|a| a == "--background" || a == "--from-autostart")
+            {
                 return;
             }
             if args.iter().any(|a| a == "--close-window") {
@@ -323,13 +336,21 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .app_name("OpenStreamDeck")
+                .arg("--from-autostart")
+                .build(),
+        )
         .setup(|app| {
             let dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&dir)?;
-            let config = store::load(&dir).map_err(std::io::Error::other)?;
+            let (config, settings_error) =
+                settings::load(&dir, &settings::NativeLogin(app.handle()))
+                    .map_err(std::io::Error::other)?;
             let (tx, rx) = std::sync::mpsc::sync_channel(64);
             app.manage(AppState::new(dir, config, tx));
+            *app.state::<AppState>().settings_error.lock().unwrap() = settings_error;
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("n3-hid".into())
@@ -396,7 +417,17 @@ pub fn run() {
             let menu = tauri::menu::Menu::with_items(app, &[&show, &quit])?;
             let mut tray = tauri::tray::TrayIconBuilder::new()
                 .menu(&menu)
+                .show_menu_on_left_click(false)
                 .tooltip("OpenStreamDeck · N3")
+                .on_tray_icon_event(|tray, event| {
+                    let app = tray.app_handle();
+                    if let Err(error) =
+                        navigation::tray_click(&event, &navigation::NativeWindow(app))
+                    {
+                        eprintln!("{error}");
+                        let _ = app.emit("action_error", error);
+                    }
+                })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
                     "quit" => app.exit(0),
@@ -423,7 +454,10 @@ pub fn run() {
                     }
                 });
             }
-            if !std::env::args().any(|a| a == "--background" || a == "--hardware-smoke") {
+            if !settings::start_in_background(
+                app.state::<AppState>().config.lock().unwrap().menu_bar_only,
+                &std::env::args().collect::<Vec<_>>(),
+            ) {
                 show_window(app.handle());
             } else {
                 #[cfg(target_os = "macos")]
@@ -454,18 +488,26 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("OpenStreamDeck startup failed")
         .run(|app, event| match event {
-            tauri::RunEvent::ExitRequested {
-                code: None, api, ..
-            } => api.prevent_exit(),
+            tauri::RunEvent::ExitRequested { code, api, .. } => {
+                if settings::keep_running_after_exit(
+                    app.state::<AppState>().config.lock().unwrap().menu_bar_only,
+                    code,
+                ) {
+                    api.prevent_exit();
+                }
+            }
             tauri::RunEvent::WindowEvent {
+                label,
                 event: tauri::WindowEvent::Destroyed,
                 ..
-            } => {
-                // The actual webview is dropped; tray services keep running.
-                #[cfg(target_os = "macos")]
-                let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
-                #[cfg(not(target_os = "macos"))]
-                let _ = app;
+            } if label == "main" => {
+                let menu_bar_only = app.state::<AppState>().config.lock().unwrap().menu_bar_only;
+                if let Err(error) =
+                    settings::window_closed(menu_bar_only, &settings::NativeClose(app))
+                {
+                    eprintln!("{error}");
+                    *app.state::<AppState>().settings_error.lock().unwrap() = Some(error);
+                }
             }
             _ => {}
         });

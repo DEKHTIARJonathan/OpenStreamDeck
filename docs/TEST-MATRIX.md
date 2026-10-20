@@ -8,11 +8,23 @@ implementation works.
 
 ## Local validation (2026-10-19)
 
-On macOS arm64, the current frontend production build, 57 frontend unit tests,
-16 Playwright browser tests and 76 Rust tests passed. The Rust suite passed with
-both default and all features, with no ignored tests. Pre-commit checks are
-separate; see [CI.md](CI.md) for their commands. These results do not establish
-hosted Linux/Windows, real provider or physical-device validation.
+On macOS arm64, the frontend production build, 60 frontend unit tests and 20
+Playwright browser tests passed. All 85 Rust library tests and 2 macOS entry
+point tests passed with both default and all features; no tests were ignored.
+Pre-commit checks are separate; see [CI.md](CI.md) for their commands. These
+results do not establish hosted Linux/Windows, real provider or physical-device
+validation.
+
+### Settings and tray behavior
+
+| Supported surface                            | Automated coverage                                                                                                                                                                                                      | Native validation and remaining limits                                                                                                                                                                                                                                                           |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sleep defaults to 0; saved values retained   | `settings::tests::sleep_defaults_off_and_existing_preferences_are_preserved`, `src/model.test.ts`, `tests/settings.spec.ts`                                                                                             | Native Device tab observed with sleep deactivated; no new physical sleep observation                                                                                                                                                                                                             |
+| Launch at login, both directions             | `settings::tests::login_enables_disables_and_round_trips_both_preferences`, `failures_leave_live_and_persisted_preferences_unchanged`, `invalid_settings_have_no_os_or_persistence_effects`                             | Production save path with injected registration boundary; covers enable, disable, read/write/verification failures, ignored OS changes, persistence rollback and rollback errors. Real login/logout not exercised                                                                                |
+| External login-item changes and startup mode | `settings::tests::startup_reads_os_registration_without_rewriting_preferences`, `login_startup_respects_tray_mode_and_manual_launch_opens_window`                                                                       | Reads real registration at app startup; automatic-login launches are covered by policy tests, not an OS login session                                                                                                                                                                            |
+| Close to tray versus quit                    | `settings::tests::closing_uses_current_preference_and_explicit_quit_always_exits`; existing navigation restoration tests                                                                                                | Injected OS boundary. Native quit/close cycle was not run against the user's development process                                                                                                                                                                                                 |
+| Left-click opens GUI; right-click opens menu | `navigation::tests::left_tray_click_restores_or_recreates_window_without_changing_navigation`, `tray_click_propagates_foreground_failures`                                                                              | On macOS 2026-10-19, targeted OS mouse events on the live app's tray icon foregrounded the GUI with no menu on left-click; right-click exposed Open/Quit. Windows not run. Tauri does not support disabling left-click menus or tray click events on Linux; desktop panel behavior applies there |
+| Tabbed settings and provider editors         | `tests/settings.spec.ts`: keyboard tabs, minimum-window layout, cross-tab drafts, both toggles, save/reload, invalid sleep, save failure, every provider's credential routing/removal/failure and no secret persistence | Browser screenshots inspected at 1380×900 and 1060×720. Native Settings accessibility tree inspected in OpenStreamDeck 0.1.0 (debug, macOS arm64, attached N3 `5548:1001`); running OS application name confirmed as OpenStreamDeck                                                              |
 
 ## Action coverage
 

@@ -31,13 +31,14 @@ For Open app or URL, use **Choose an application** to select its name, launch
 target and icon together. **URL or custom target** is the optional advanced
 path. Choose a key color or upload artwork to customize other keys. In the
 native app, the editor preview comes from the same JPEG renderer as the device.
-Settings exposes image size and rotation; visible geometry still needs checking
-on your device.
+Settings → Device exposes image size and rotation; visible geometry still needs
+checking on your device.
 
 The Sleep action toggles sleep/wake. Releasing the button keeps the device
 asleep. A new press or dial rotation wakes it without also running the assigned
 action. The explicit Wake display action is idempotent. Settings controls
-inactivity sleep in minutes; zero disables automatic sleep.
+inactivity sleep in minutes; the default is **0**, which disables automatic
+sleep. Existing saved sleep values are preserved.
 
 ## Workflows and providers
 
@@ -47,12 +48,13 @@ becomes the next step's input, and a failure stops the sequence. The default
 summarization workflow explicitly reads the clipboard, sends that text to the
 chosen provider and writes the result back to the clipboard.
 
-Configure provider endpoint and model ID in Settings, then save configuration
-changes before saving an API key. OpenAI, Anthropic, Gemini and compatible
-endpoints are supported. Choose a model available to your account or local
-server; models are not selected automatically. Credentials are scoped to the
-saved provider ID, type and endpoint. Changing that identity requires re-entry.
-**Remove stored key** deletes the credential for the current saved identity.
+Configure provider endpoint and model ID in Settings → Agents & AI, then save
+configuration changes before saving an API key. OpenAI, Anthropic, Gemini and
+compatible endpoints are supported. Choose a model available to your account or
+local server; models are not selected automatically. Credentials are scoped to
+the saved provider ID, type and endpoint. Changing that identity requires
+re-entry. **Remove stored key** deletes the credential for the current saved
+identity.
 
 Prompts and ordinary value templates can use `{{input}}` for the previous
 result. Shell actions must instead read `OPENSTREAMDECK_INPUT` from the child
@@ -123,13 +125,32 @@ not delete or rewrite that original file.
 The app ID is `dev.openstreamdeck.desktop`; Settings shows the resolved native
 data directory. The OS credential service is `OpenStreamDeck`. Provider keys
 remain in the credential store and must be entered separately when restoring on
-another machine. The app does not expose a login-item setup control.
+another machine.
+
+Settings has three tabs: **General** for application behavior, **Device** for
+sleep and display geometry, and **Agents & AI** for provider configuration and
+local agent status. Select a provider to edit its endpoint, model and API key.
+Page renaming remains beside the page tabs in Deck.
+
+In **General**, enable **Launch at login** to register OpenStreamDeck with the
+operating system. Disabling it removes that registration. Both changes take
+effect with **Save changes**. Registration is checked after updating it; errors
+appear in the banner and failed saves preserve the prior configuration. The app
+reads the OS registration at startup, respecting changes made outside the app.
+Login launch starts in the tray when Menu bar only is enabled and opens the
+window when it is disabled. A normal manual launch opens the window.
 
 Browser preview uses the separate `openstreamdeck-preview` local-storage key.
 Use Export and Import to transfer configurations between the browser preview and
 the native app, or between browser origins.
 
-Closing the window leaves the native backend running in the tray. Reopen it from
-the tray or launch the app again; use Quit to terminate it. Disconnect pauses
-device discovery for the current process. For device permissions, manual
-diagnostics and packaging, see [README](../README.md) and [CI](CI.md).
+**Menu bar only** is enabled by default. With it on, closing the window releases
+the webview and leaves the native backend running in the menu bar/system tray.
+Left-click the tray icon to immediately reopen or foreground the window;
+right-click opens its menu on macOS and Windows. Linux tray behavior depends on
+the desktop panel; its menu also provides **Open OpenStreamDeck**. You can also
+launch the app again. With it off, closing the window quits OpenStreamDeck,
+stopping device controls, workflows and monitoring. Explicit **Quit** always
+exits. Apply this preference with **Save changes**. Disconnect pauses device
+discovery for the current process. For device permissions, manual diagnostics
+and packaging, see [README](../README.md) and [CI](CI.md).

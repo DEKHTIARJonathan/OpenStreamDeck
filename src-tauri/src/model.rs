@@ -58,6 +58,13 @@ pub struct Config {
     pub image_size: u32,
     pub rotation: u16,
     pub sleep_minutes: u32,
+    #[serde(default)]
+    pub launch_at_login: bool,
+    #[serde(default = "default_menu_bar_only")]
+    pub menu_bar_only: bool,
+}
+fn default_menu_bar_only() -> bool {
+    true
 }
 impl Default for Config {
     fn default() -> Self {
@@ -162,7 +169,9 @@ impl Default for Config {
             brightness: 60,
             image_size: 64,
             rotation: 90,
-            sleep_minutes: 15,
+            sleep_minutes: 0,
+            launch_at_login: false,
+            menu_bar_only: true,
         }
     }
 }
