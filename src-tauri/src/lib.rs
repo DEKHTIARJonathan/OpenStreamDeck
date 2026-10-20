@@ -8,8 +8,10 @@ pub mod device;
 pub mod diagnostics;
 pub mod engine;
 pub mod focus;
+pub mod foreground;
 pub mod model;
 pub mod navigation;
+pub mod page_context;
 #[cfg(windows)]
 pub mod process_tree;
 pub mod protocol;
@@ -42,16 +44,19 @@ pub struct AppState {
     pub hook_agents: Mutex<HashMap<String, AgentSession>>,
     pub adapter_errors: Mutex<Vec<String>>,
     pub selected_agent: Mutex<usize>,
-    pub agent_display: AtomicBool,
     pub agent_frame: Mutex<String>,
     pub navigation: Mutex<navigation::Navigation>,
     pub settings_error: Mutex<Option<String>>,
     pub update_installing: AtomicBool,
+    pub page_context: Mutex<page_context::PageContext>,
+    pub quitting: AtomicBool,
 }
 impl AppState {
     fn new(dir: PathBuf, config: Config, tx: SyncSender<device::DeviceCommand>) -> Self {
         Self {
             dir,
+            page_context: Mutex::new(page_context::PageContext::new(&config)),
+            quitting: AtomicBool::new(false),
             config: Mutex::new(config),
             device: Mutex::new(DeviceStatus {
                 message: "Not connected".into(),
@@ -65,7 +70,6 @@ impl AppState {
             hook_agents: Mutex::new(HashMap::new()),
             adapter_errors: Mutex::new(vec![]),
             selected_agent: Mutex::new(0),
-            agent_display: AtomicBool::new(false),
             agent_frame: Mutex::new(String::new()),
             navigation: Mutex::new(navigation::Navigation::default()),
             settings_error: Mutex::new(None),
@@ -104,7 +108,7 @@ impl AppState {
         let brightness_changed = current.brightness != config.brightness;
         settings::save(&self.dir, &mut current, config, login)?;
         *self.settings_error.lock().unwrap() = None;
-        self.agent_display.store(false, Ordering::Relaxed);
+        self.page_context.lock().unwrap().configure(&current);
         Ok(brightness_changed)
     }
 
@@ -119,6 +123,7 @@ impl AppState {
 }
 #[derive(serde::Serialize)]
 struct Snapshot {
+    platform: &'static str,
     navigation: navigation::Navigation,
     config: Config,
     device: DeviceStatus,
@@ -127,18 +132,30 @@ struct Snapshot {
     data_dir: String,
     settings_error: Option<String>,
     update: updates::Status,
+    page_context: page_context::PageContext,
 }
 #[tauri::command]
 fn snapshot(app: tauri::AppHandle, state: tauri::State<AppState>) -> Snapshot {
+    // Do not keep temporary guards alive across the entire struct expression:
+    // collecting independent fields must not nest config/device/agent locks.
+    let navigation = state.navigation.lock().unwrap().clone();
+    let config = state.config.lock().unwrap().clone();
+    let device = state.device.lock().unwrap().clone();
+    let agents = state.agents.lock().unwrap().clone();
+    let adapter_errors = state.adapter_errors.lock().unwrap().clone();
+    let settings_error = state.settings_error.lock().unwrap().clone();
+    let page_context = state.page_context.lock().unwrap().clone();
     Snapshot {
         update: app.state::<Arc<updates::Service>>().status(),
-        navigation: state.navigation.lock().unwrap().clone(),
-        config: state.config.lock().unwrap().clone(),
-        device: state.device.lock().unwrap().clone(),
-        agents: state.agents.lock().unwrap().clone(),
-        adapter_errors: state.adapter_errors.lock().unwrap().clone(),
+        platform: std::env::consts::OS,
+        navigation,
+        config,
+        device,
+        agents,
+        adapter_errors,
         data_dir: state.dir.display().to_string(),
-        settings_error: state.settings_error.lock().unwrap().clone(),
+        settings_error,
+        page_context,
     }
 }
 #[tauri::command]
@@ -153,6 +170,7 @@ fn save_config(
 ) -> Result<(), String> {
     let brightness_changed =
         state.save_configuration(config.clone(), &settings::NativeLogin(&app))?;
+    page_context::publish(&app);
     // Persistence succeeded. A busy device queue must not turn this into a
     // misleading failed save or hide the authoritative config update.
     let _ = app.emit("config", &config);
@@ -163,8 +181,7 @@ fn save_config(
         state.send(device::DeviceCommand::Brightness(config.brightness))
     } else {
         Ok(())
-    }
-    .and_then(|_| state.send(device::DeviceCommand::Redraw));
+    };
     if let Err(error) = queued {
         let _ = app.emit(
             "action_error",
@@ -263,12 +280,12 @@ fn show_agents(
     state: tauri::State<AppState>,
     enabled: bool,
 ) -> Result<(), String> {
-    state.agent_display.store(enabled, Ordering::Relaxed);
+    state.page_context.lock().unwrap().set_overlay(enabled);
+    page_context::publish(&app);
     state.agent_frame.lock().unwrap().clear();
     if enabled {
-        agents::display(&app, &state.agents.lock().unwrap())
-    } else {
-        state.send(device::DeviceCommand::Redraw)?
+        let sessions = state.agents.lock().unwrap().clone();
+        agents::display(&app, &sessions)
     }
     Ok(())
 }
@@ -333,6 +350,24 @@ async fn application_icon(path: String) -> Result<String, String> {
     applications::icon(&path).await
 }
 
+#[tauri::command]
+async fn application_identity(path: String) -> Result<ApplicationAssociation, String> {
+    applications::association(&path).await
+}
+
+#[tauri::command]
+fn select_page(app: tauri::AppHandle, page: String) -> Result<(), String> {
+    page_context::select(&app, &page)
+}
+
+#[tauri::command]
+fn resume_automatic(app: tauri::AppHandle, state: tauri::State<AppState>) {
+    let config = state.config.lock().unwrap();
+    state.page_context.lock().unwrap().resume(&config);
+    drop(config);
+    page_context::publish(&app);
+}
+
 fn show_window(app: &tauri::AppHandle) {
     if let Err(error) = navigation::foreground(&navigation::NativeWindow(app)) {
         eprintln!("{error}");
@@ -388,6 +423,10 @@ pub fn run() {
             app.manage(AppState::new(dir, config, tx));
             updates::setup(app.handle());
             *app.state::<AppState>().settings_error.lock().unwrap() = settings_error;
+            let handle = app.handle().clone();
+            std::thread::Builder::new()
+                .name("foreground-app".into())
+                .spawn(move || page_context::monitor(handle))?;
             let handle = app.handle().clone();
             std::thread::Builder::new()
                 .name("n3-hid".into())
@@ -514,6 +553,9 @@ pub fn run() {
             render_keys,
             list_applications,
             application_icon,
+            application_identity,
+            select_page,
+            resume_automatic,
             save_config,
             connect_device,
             list_devices,
@@ -531,6 +573,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("OpenStreamDeck startup failed")
         .run(|app, event| match event {
+            tauri::RunEvent::Exit => {
+                app.state::<AppState>()
+                    .quitting
+                    .store(true, Ordering::Relaxed);
+            }
             tauri::RunEvent::ExitRequested { code, api, .. } => {
                 if app
                     .state::<Arc<updates::Service>>()
@@ -637,7 +684,7 @@ mod queue_tests {
             DeviceCommand::Sleep(true),
             DeviceCommand::ToggleSleep,
             DeviceCommand::Redraw,
-            DeviceCommand::Image(1, vec![1]),
+            DeviceCommand::AgentFrame(0, vec![], vec![], String::new()),
             DeviceCommand::Raw(vec![0]),
         ] {
             assert_eq!(state.send(command).unwrap_err(), "N3 is not connected");

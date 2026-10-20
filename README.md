@@ -106,15 +106,34 @@ screenshots do not establish native or physical-device validation.
 
 ## What can you put on a key?
 
-|                            | Your controls                                                                                                                                                    |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Apps & shortcuts**       | Pick an application with its native icon; open a URL; run a keyboard shortcut; type text; control media; click a mouse button                                    |
-| **Artwork & pages**        | Colors, glyphs, labels and uploaded artwork; add, rename and delete pages; fixed Previous/Next buttons with wraparound; draft editing and explicit saves         |
-| **Workflows & macros**     | Ordered actions, conditions, cycles, delays and cancellation; clipboard and text-file steps; configured shell commands                                           |
-| **AI workflows**           | Explicit inputs, configurable models and endpoints, streaming provider transports and visible execution errors                                                   |
-| **Local coding agents**    | Herdr sessions, Codex parent/child discovery and Claude Code lifecycle hooks; dashboard navigation, selection, focus and prompts where the adapter supports them |
-| **Device & desktop**       | Automatic discovery/reconnect, brightness, sleep/wake, optional inactivity sleep, tray operation and launch-at-login settings                                    |
-| **Portable configuration** | JSON import/export for pages, workflows and settings; validation and a previous-save backup; credentials excluded from exports                                   |
+|                            | Your controls                                                                                                                                                                      |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Apps & shortcuts**       | Pick an application with its native icon; open a URL; run a keyboard shortcut; type text; control media; click a mouse button                                                      |
+| **Artwork & pages**        | Colors, glyphs, labels and uploaded artwork; add, rename and delete pages; context-specific Previous/Next with wraparound; drag to reorder pages; draft editing and explicit saves |
+| **Workflows & macros**     | Ordered actions, conditions, cycles, delays and cancellation; clipboard and text-file steps; configured shell commands                                                             |
+| **AI workflows**           | Explicit inputs, configurable models and endpoints, streaming provider transports and visible execution errors                                                                     |
+| **Local coding agents**    | Herdr sessions, Codex parent/child discovery and Claude Code lifecycle hooks; dashboard navigation, selection, focus and prompts where the adapter supports them                   |
+| **Device & desktop**       | Automatic discovery/reconnect, brightness, sleep/wake, optional inactivity sleep, tray operation and launch-at-login settings                                                      |
+| **Portable configuration** | JSON import/export for pages, workflows and settings; validation and a previous-save backup; credentials excluded from exports                                                     |
+
+### Pages that follow your applications
+
+Choose **Default** or an application in the first navigation row, then edit its
+pages in the second row. Use **Add application** for Chrome or VS Code and **Add
+page** to give that application several sets of controls. Default contains your
+ordinary pages and a designated fallback for unmatched applications.
+
+With automatic switching enabled, activating an app selects the first of its
+saved pages. Previous/Next stays within that application's pages; in Default, it
+cycles ordinary pages. Drag page tabs into order and save to change that
+sequence. Explicit page actions can still jump to another context.
+
+The editor distinguishes **Editing** from **On device**, so switching
+applications does not interrupt an edit. Native detection supports macOS,
+Windows executable identity and local X11 resource classes; Wayland reports it
+unavailable. See the
+[setup and platform limits](docs/USAGE.md#application-specific-pages) and
+[verification evidence](docs/TEST-MATRIX.md#application-specific-pages).
 
 ### One key. Three steps.
 

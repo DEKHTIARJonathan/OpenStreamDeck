@@ -12,7 +12,6 @@ import {
   ArrowDown,
   ArrowUp,
   Trash2,
-  Pencil,
   Copy,
   Download,
   Upload,
@@ -38,7 +37,25 @@ import {
   type UpdateStatus,
 } from "./UpdatePanel";
 import DeletePageDialog from "./DeletePageDialog";
-import { removePage, renamePage } from "./page-editor";
+import DeleteApplicationDialog from "./DeleteApplicationDialog";
+import {
+  removePage,
+  removeApplication,
+  renamePage,
+  setDefaultPage,
+  associateApplicationContext,
+  contextPages,
+  pageContextKey,
+  pageAfterDeletion,
+  reorderPage,
+  movePage,
+  applicationPage,
+  createApplicationPage,
+} from "./page-editor";
+import PageNavigation from "./PageNavigation";
+import PageRoleDialog from "./PageRoleDialog";
+import MoveApplicationDialog from "./MoveApplicationDialog";
+import PageOptions from "./PageOptions";
 import RenamePageDialog from "./RenamePageDialog";
 import {
   receiveConfig,
@@ -65,6 +82,7 @@ import {
   type InputEvent,
   type View,
   type Navigation,
+  type PageContext,
 } from "./model";
 const views = [
   ["Deck", Grid2X2],
@@ -373,6 +391,29 @@ export default function App() {
         !current || next.revision >= current.revision ? next : current,
       );
   };
+  const [deleteApplicationTarget, setDeleteApplicationTarget] = useState<{
+    key: string;
+    name: string;
+  } | null>(null);
+  const deleteApplicationButton = useRef<HTMLButtonElement>(null);
+  const [editorPageId, setEditorPageId] = useState<string | null>(null);
+  const [pageContext, setPageContext] = useState<PageContext | null>(null);
+  const pageRevision = useRef(-1);
+  const applyPageContext = (context?: PageContext) => {
+    if (context && context.revision > pageRevision.current) {
+      pageRevision.current = context.revision;
+      setPageContext(context);
+    }
+  };
+  const [associationTarget, setAssociationTarget] = useState<
+    { kind: "create" } | { kind: "change"; pageId: string } | null
+  >(null);
+  const [moveContextTarget, setMoveContextTarget] = useState<string | null>(
+    null,
+  );
+  const lastEditedByContext = useRef(new Map<string, string>());
+  const [defaultTarget, setDefaultTarget] = useState<string | null>(null);
+  const [duplicatePageId, setDuplicatePageId] = useState<string | null>(null);
   const navigationRevision = useRef(-1);
   const applyNavigation = (navigation?: Navigation) => {
     if (navigation && navigation.revision > navigationRevision.current) {
@@ -384,7 +425,18 @@ export default function App() {
   const dirty = editor ? isDirty(editor) : false;
   const [saving, setSaving] = useState(false);
   const [frames, setFrames] = useState<string[]>([]);
-  const frameActions = w?.pages.find((p) => p.id === w.active_page)?.bindings;
+  const editingPage =
+    w?.pages.find((p) => p.id === editorPageId) ??
+    w?.pages.find((p) => p.id === w.active_page) ??
+    w?.pages[0];
+  const editingContext = editingPage ? pageContextKey(editingPage) : null;
+  useEffect(() => {
+    if (editingPage && editingContext) {
+      lastEditedByContext.current.set(editingContext, editingPage.id);
+      if (editingPage.id !== editorPageId) setEditorPageId(editingPage.id);
+    }
+  }, [editingPage?.id, editingContext, editorPageId]);
+  const frameActions = editingPage?.bindings;
   useEffect(() => {
     if (!native || !w || !frameActions) return;
     let cancelled = false;
@@ -428,6 +480,7 @@ export default function App() {
       sub<Agent[]>("agents", (agents) => setSnap((s) => s && { ...s, agents })),
       sub<InputEvent>("input", setLastInput),
       sub<Navigation>("navigate", applyNavigation),
+      sub<PageContext>("page-context", applyPageContext),
       sub<string>("action_error", fail),
       sub<UpdateStatus>("update_status", applyUpdateStatus),
     ])
@@ -440,6 +493,7 @@ export default function App() {
           if (s.settings_error) fail(s.settings_error);
           setEditor((current) => receiveConfig(current, s.config));
           applyNavigation(s.navigation);
+          applyPageContext(s.page_context);
         }
       })
       .catch((e) => {
@@ -502,7 +556,44 @@ export default function App() {
         <p>{error || "Opening your pages…"}</p>
       </div>
     );
-  const page = w.pages.find((p) => p.id === w.active_page)!;
+  const page = editingPage!;
+  const siblings = contextPages(w, page);
+  const canDeletePage =
+    w.pages.length > 1 && (!!page.application || siblings.length > 1);
+  const editPages = (update: (draft: Config) => void) => {
+    try {
+      setEditor(editConfig(editor!, update));
+    } catch (error) {
+      fail(error);
+    }
+  };
+  const addPage = (defaultContext = false) => {
+    const id = uid();
+    const application = defaultContext ? null : page.application;
+    change((draft) => {
+      const count = draft.pages.filter((candidate) =>
+        application
+          ? pageContextKey(candidate) === pageContextKey(page)
+          : !candidate.application,
+      ).length;
+      draft.pages.push({
+        id,
+        name: count ? `Page ${count + 1}` : "Home",
+        bindings: {},
+        ...(application ? { application: structuredClone(application) } : {}),
+      });
+      if (!application && count === 0 && !draft.page_switching.default_page)
+        draft.page_switching.default_page = id;
+    });
+    setEditorPageId(id);
+    setSelected("lcd1");
+  };
+  const associationUnavailable =
+    page.application &&
+    snap.platform &&
+    !page.application.identities.some(
+      (identity) => identity.platform === snap.platform,
+    );
   const binding = page.bindings[selected] || action();
   const workflow = w.workflows.find((f) => f.id === workflowId);
   const step = workflow?.steps[stepIndex];
@@ -510,7 +601,7 @@ export default function App() {
   const editBinding = (a: Action) => {
     if (fixedNavigation) return;
     change((w) => {
-      w.pages.find((p) => p.id === w.active_page)!.bindings[selected] = a;
+      w.pages.find((p) => p.id === page.id)!.bindings[selected] = a;
     });
   };
   const editWorkflow = (fn: (f: NonNullable<typeof workflow>) => void) =>
@@ -530,10 +621,16 @@ export default function App() {
       fail(e);
     }
   };
-  const confirmPageDeletion = () => {
+  const confirmPageDeletion = (replacementDefault?: string) => {
     if (!editor || !deletePageId) return;
     try {
-      setEditor(editConfig(editor, (draft) => removePage(draft, deletePageId)));
+      const next = pageAfterDeletion(w, deletePageId);
+      setEditor(
+        editConfig(editor, (draft) =>
+          removePage(draft, deletePageId, replacementDefault),
+        ),
+      );
+      if (page.id === deletePageId) setEditorPageId(next);
       setDeletePageId(null);
       setNotice("Page removed. Save changes to apply.");
     } catch (e) {
@@ -651,27 +748,29 @@ export default function App() {
           </div>
         </header>
         <div className="content">
-          <div className="page-heading">
+          <div
+            className={`page-heading${view === "Deck" ? " deck-page-heading" : ""}`}
+          >
             <div>
-              <div className="eyebrow">
-                {view === "Deck"
-                  ? "MAKE IT YOURS"
-                  : view === "AI workflows"
+              {view !== "Deck" && (
+                <div className="eyebrow">
+                  {view === "AI workflows"
                     ? "A SHORTCUT FROM IDEA TO ACTION"
                     : view === "Agents"
                       ? "YOUR AGENTS, AT A GLANCE"
                       : "DESIGNED AROUND YOU"}
-              </div>
+                </div>
+              )}
               <h1>{view === "Deck" ? "Your command center" : view}</h1>
-              <p>
-                {view === "Deck"
-                  ? "Six keys. Three dials. Everything within reach."
-                  : view === "AI workflows"
+              {view !== "Deck" && (
+                <p>
+                  {view === "AI workflows"
                     ? "Connect inputs, models and actions. Put a workflow on any key."
                     : view === "Agents"
                       ? "Live agent activity, including sub-agents. Ready means between turns; it does not mean the task is complete."
                       : "A few thoughtful adjustments. A deck that feels like yours."}
-              </p>
+                </p>
+              )}
             </div>
             {view === "Deck" && (
               <div className="row">
@@ -700,6 +799,7 @@ export default function App() {
                             (current) =>
                               current && { ...current, draft: imported },
                           );
+                          setEditorPageId(imported.active_page);
                           setNotice("Imported for review. Save to apply.");
                         } catch (e) {
                           fail(e);
@@ -712,83 +812,169 @@ export default function App() {
           </div>
           {view === "Deck" && (
             <>
-              <div className="deck-toolbar">
-                <div className="page-tabs">
-                  {w.pages.map((p) => (
-                    <button
-                      key={p.id}
-                      className={p.id === page.id ? "selected" : ""}
-                      onClick={() =>
-                        change((w) => {
-                          w.active_page = p.id;
-                        })
-                      }
-                    >
-                      {p.name}
-                    </button>
-                  ))}
+              <PageNavigation
+                config={w}
+                savedConfig={editor!.base}
+                page={page}
+                device={snap.device}
+                context={pageContext}
+                edit={setEditorPageId}
+                selectContext={(key) => {
+                  const pages = w.pages.filter(
+                    (candidate) => pageContextKey(candidate) === key,
+                  );
+                  const remembered = lastEditedByContext.current.get(key);
+                  setEditorPageId(
+                    pages.find((candidate) => candidate.id === remembered)
+                      ?.id ??
+                      pages[0]?.id ??
+                      null,
+                  );
+                }}
+                addPage={() => addPage()}
+                addDefault={() => addPage(true)}
+                reorder={(source, target, position) =>
+                  editPages((draft) =>
+                    reorderPage(draft, source, target, position),
+                  )
+                }
+                move={(id, direction) =>
+                  editPages((draft) => movePage(draft, id, direction))
+                }
+                contextOptions={
+                  page.application ? (
+                    <PageOptions
+                      label="Application options"
+                      items={[
+                        {
+                          label: "Change application",
+                          run: () =>
+                            setAssociationTarget({
+                              kind: "change",
+                              pageId: page.id,
+                            }),
+                        },
+                        {
+                          label: "Move pages to Default",
+                          run: () => setMoveContextTarget(page.id),
+                        },
+                      ]}
+                    />
+                  ) : undefined
+                }
+                addApplication={() => setAssociationTarget({ kind: "create" })}
+                removeApplication={
                   <button
-                    aria-label="Add page"
-                    onClick={() =>
-                      change((w) => {
-                        const id = uid();
-                        w.pages.push({
-                          id,
-                          name: `Page ${w.pages.length + 1}`,
-                          bindings: {},
-                        });
-                        w.active_page = id;
-                      })
-                    }
-                  >
-                    <Plus size={15} />
-                  </button>
-                </div>
-                <div className="row page-actions">
-                  <button
-                    className="rename-page"
-                    onClick={() =>
-                      setRenameTarget({ id: page.id, name: page.name })
-                    }
-                  >
-                    <Pencil size={15} />
-                    Rename page
-                  </button>
-                  <button
-                    className="delete-page danger"
-                    disabled={w.pages.length < 2}
+                    className="page-delete-control"
+                    aria-label="Delete application"
+                    ref={deleteApplicationButton}
+                    disabled={!page.application}
                     title={
-                      w.pages.length < 2
-                        ? "Keep at least one page"
+                      page.application
+                        ? `Delete ${page.application.name} and all its pages`
+                        : "Default cannot be deleted"
+                    }
+                    onClick={() => {
+                      if (page.application)
+                        setDeleteApplicationTarget({
+                          key: pageContextKey(page),
+                          name: page.application.name,
+                        });
+                    }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                }
+                removePage={
+                  <button
+                    className="page-delete-control"
+                    aria-label="Delete page"
+                    disabled={!canDeletePage}
+                    title={
+                      !canDeletePage
+                        ? "Keep at least one Default page"
                         : `Delete ${page.name}`
                     }
                     onClick={() => setDeletePageId(page.id)}
                   >
-                    <Trash2 size={15} />
-                    Delete page
+                    <Trash2 size={16} />
+                  </button>
+                }
+                renamePage={() =>
+                  setRenameTarget({ id: page.id, name: page.name })
+                }
+                toggle={(enabled) =>
+                  change((draft) => {
+                    draft.page_switching.enabled = enabled;
+                  })
+                }
+                resume={() => perform("resume_automatic")}
+              />
+              {!editor?.base.pages.some(
+                (candidate) => candidate.id === page.id,
+              ) && (
+                <div className="page-setup-hint" role="status">
+                  <span>
+                    New page · Choose a key or dial to add your actions.
+                  </span>
+                  <button className="primary" onClick={save} disabled={saving}>
+                    <Save size={15} />
+                    Save{" "}
+                    {page.application && w.page_switching.enabled
+                      ? "and enable"
+                      : "page"}
                   </button>
                 </div>
-              </div>
-              {w.pages.length === 1 && (
-                <p className="muted">
-                  You have one page. Add a page with + above to use the
-                  Previous/Next buttons. Keep at least one page.
+              )}
+              {associationUnavailable && (
+                <p className="page-save-hint">
+                  This application association is inactive on {snap.platform}.
+                  Choose Change application to associate an installed
+                  application on this computer.
                 </p>
               )}
-              <div className="deck-layout">
+              <div
+                className="deck-layout"
+                role="tabpanel"
+                id="page-editor"
+                aria-labelledby={`page-tab-${page.id}`}
+              >
                 <section className="panel device-stage">
                   <div className="panel-title">
-                    <span>
-                      <i
-                        className={snap.device.connected ? "dot online" : "dot"}
-                      />{" "}
-                      N3
-                    </span>
-                    <span className="muted">
-                      {snap.device.connected
-                        ? snap.device.serial.slice(-4)
-                        : "Device layout"}
-                    </span>
+                    <span>Editing: {page.name}</span>
+                    <div className="row">
+                      {!page.application &&
+                        w.page_switching.default_page !== page.id && (
+                          <button
+                            className="show-page-on-deck"
+                            onClick={() => setDefaultTarget(page.id)}
+                          >
+                            Set as Default
+                          </button>
+                        )}
+                      <button
+                        className="show-page-on-deck"
+                        disabled={
+                          !native ||
+                          !editor!.base.pages.some(
+                            (candidate) => candidate.id === page.id,
+                          )
+                        }
+                        title={
+                          editor!.base.pages.some(
+                            (candidate) => candidate.id === page.id,
+                          )
+                            ? "Shows saved assignments; pending edits stay in the editor"
+                            : "Save this new page before showing it on deck"
+                        }
+                        onClick={() =>
+                          void perform("select_page", { page: page.id })
+                        }
+                      >
+                        <Play size={12} />
+                        Show on deck
+                      </button>
+                    </div>
                   </div>
                   <div className="hardware">
                     <div className="lcd-grid">
@@ -912,13 +1098,14 @@ export default function App() {
                         {selected === "button1" ? "Previous page" : "Next page"}
                       </h2>
                       <p>
-                        This button always cycles through all pages, including
-                        empty pages. Its role cannot be changed.
+                        This button cycles through pages in the current
+                        application or Default, in tab order. Its role cannot be
+                        changed.
                       </p>
                       <p className="muted">
-                        {w.pages.length === 1
-                          ? "You have one page. Use + beside the page tabs to add another page."
-                          : `${w.pages.length} pages · navigation wraps at either end.`}
+                        {siblings.length === 1
+                          ? "You have one page here. Use Add page to enable navigation."
+                          : `${siblings.length} pages · navigation wraps at either end.`}
                       </p>
                     </div>
                   ) : (
@@ -954,9 +1141,7 @@ export default function App() {
                                   "brightness" | "volume" | "agents";
                                 change((w) =>
                                   assignDial(
-                                    w.pages.find(
-                                      (p) => p.id === w.active_page,
-                                    )!,
+                                    w.pages.find((p) => p.id === page.id)!,
                                     selected.split(".")[0],
                                     preset,
                                   ),
@@ -1407,6 +1592,136 @@ export default function App() {
           )}
         </div>
       </main>
+      {associationTarget?.kind === "create" && (
+        <ApplicationPicker
+          close={() => setAssociationTarget(null)}
+          create={{
+            defaultPages: w.pages.filter((candidate) => !candidate.application),
+            defaultPageId: w.page_switching.default_page,
+            suggestedDefaultId:
+              (!page.application ? page.id : null) ??
+              w.pages.find((candidate) => !candidate.application)?.id ??
+              null,
+            submit: (application, name, defaultPageId, enabled) => {
+              const duplicate = applicationPage(w, application);
+              if (duplicate) {
+                setAssociationTarget(null);
+                setDuplicatePageId(duplicate.id);
+                return;
+              }
+              const id = uid();
+              setEditor(
+                editConfig(editor!, (draft) =>
+                  createApplicationPage(draft, {
+                    id,
+                    name,
+                    application,
+                    defaultPageId,
+                    newDefaultId: uid(),
+                    enabled,
+                  }),
+                ),
+              );
+              setEditorPageId(id);
+              setSelected("lcd1");
+              setAssociationTarget(null);
+              setNotice("Page created. Add your actions, then save changes.");
+            },
+          }}
+        />
+      )}
+      {associationTarget?.kind === "change" && (
+        <ApplicationPicker
+          close={() => setAssociationTarget(null)}
+          associate={(application) => {
+            const source = w.pages.find(
+              (candidate) => candidate.id === associationTarget.pageId,
+            );
+            const duplicate = applicationPage(
+              {
+                ...w,
+                pages: w.pages.filter(
+                  (candidate) =>
+                    !source ||
+                    pageContextKey(candidate) !== pageContextKey(source),
+                ),
+              },
+              application,
+            );
+            if (duplicate) {
+              setDuplicatePageId(duplicate.id);
+              return;
+            }
+            setEditor(
+              editConfig(editor!, (draft) =>
+                associateApplicationContext(
+                  draft,
+                  associationTarget.pageId,
+                  application,
+                ),
+              ),
+            );
+            setNotice(
+              application.image
+                ? "Application associated. Save changes to apply."
+                : "Application associated with a generic icon; artwork is unavailable. Save changes to apply.",
+            );
+          }}
+        />
+      )}
+      {moveContextTarget && (
+        <MoveApplicationDialog
+          name={
+            w.pages.find((candidate) => candidate.id === moveContextTarget)
+              ?.application?.name ?? "Application"
+          }
+          close={() => setMoveContextTarget(null)}
+          confirm={() => {
+            try {
+              setEditor(
+                editConfig(editor!, (draft) =>
+                  associateApplicationContext(draft, moveContextTarget, null),
+                ),
+              );
+              setMoveContextTarget(null);
+              setNotice("Pages moved to Default. Save changes to apply.");
+            } catch (error) {
+              fail(error);
+            }
+          }}
+        />
+      )}
+      {defaultTarget !== null && (
+        <PageRoleDialog
+          config={w}
+          target={defaultTarget}
+          close={() => setDefaultTarget(null)}
+          confirm={(id) => {
+            try {
+              setEditor(
+                editConfig(editor!, (draft) => setDefaultPage(draft, id)),
+              );
+              setDefaultTarget(null);
+              setNotice("Default page changed. Save changes to apply.");
+            } catch (error) {
+              fail(error);
+            }
+          }}
+        />
+      )}
+      {duplicatePageId && (
+        <DuplicateApplicationDialog
+          name={
+            w.pages.find((page) => page.id === duplicatePageId)?.name ??
+            "Existing page"
+          }
+          close={() => setDuplicatePageId(null)}
+          edit={() => {
+            setEditorPageId(duplicatePageId);
+            setDuplicatePageId(null);
+          }}
+        />
+      )}
       {renameTarget && (
         <RenamePageDialog
           config={w}
@@ -1416,6 +1731,36 @@ export default function App() {
           confirm={confirmPageRename}
         />
       )}{" "}
+      {deleteApplicationTarget && (
+        <DeleteApplicationDialog
+          config={w}
+          target={deleteApplicationTarget}
+          close={() => {
+            setDeleteApplicationTarget(null);
+            deleteApplicationButton.current?.focus();
+          }}
+          confirm={() => {
+            try {
+              let nextPage: string | null = null;
+              const updated = editConfig(editor!, (draft) => {
+                nextPage = removeApplication(
+                  draft,
+                  deleteApplicationTarget.key,
+                );
+              });
+              setEditor(updated);
+              if (pageContextKey(page) === deleteApplicationTarget.key)
+                setEditorPageId(nextPage);
+              setDeleteApplicationTarget(null);
+              setNotice(
+                "Application and its pages removed. Save changes to apply.",
+              );
+            } catch (error) {
+              fail(error);
+            }
+          }}
+        />
+      )}
       {deletePageId && (
         <DeletePageDialog
           config={w}
@@ -1439,5 +1784,42 @@ export default function App() {
         </div>
       )}
     </div>
+  );
+}
+
+function DuplicateApplicationDialog({
+  name,
+  close,
+  edit,
+}: {
+  name: string;
+  close: () => void;
+  edit: () => void;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current!;
+    element.showModal();
+    return () => element.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className="panel page-dialog"
+      aria-labelledby="duplicate-application-title"
+      onCancel={close}
+    >
+      <h2 id="duplicate-application-title">Application already assigned</h2>
+      <p>
+        This application already selects “{name}”. Its association has not
+        changed.
+      </p>
+      <div className="row">
+        <button autoFocus onClick={close}>
+          Cancel
+        </button>
+        <button onClick={edit}>Edit existing application page</button>
+      </div>
+    </dialog>
   );
 }

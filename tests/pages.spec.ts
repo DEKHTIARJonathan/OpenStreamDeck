@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { pageTab, editPage, usePageOption } from "./page-controls";
 import applicationPages from "./fixtures/config-application-pages.json" with { type: "json" };
 
 test("application-page configuration survives import, editing, save, reload and export", async ({
@@ -10,9 +11,10 @@ test("application-page configuration survives import, editing, save, reload and 
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(applicationPages)),
   });
-  await expect(
-    page.getByRole("button", { name: "Editor", exact: true }),
-  ).toHaveClass(/selected/);
+  await expect(pageTab(page, "Editor")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByRole("button", { name: "LCD 1: Save", exact: true }).click();
   await page.getByLabel("Label", { exact: true }).fill("Save file");
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -42,7 +44,7 @@ test("navigation buttons are fixed on empty pages", async ({ page }) => {
     await expect(
       page
         .locator(".fixed-navigation")
-        .getByText("You have one page.", { exact: false }),
+        .getByText("You have one page here.", { exact: false }),
     ).toBeVisible();
     await expect(page.getByLabel("Action", { exact: true })).toHaveCount(0);
     for (const button of await page.locator(".action-grid button").all())
@@ -51,7 +53,8 @@ test("navigation buttons are fixed on empty pages", async ({ page }) => {
       page.getByRole("button", { name: "Clear binding", exact: true }),
     ).toHaveCount(0);
   }
-  await page.getByRole("button", { name: "Add page", exact: true }).click();
+  await usePageOption(page, "Add page");
+  await page.getByRole("button", { name: "Button 2", exact: true }).click();
   await expect(
     page.getByText("2 pages · navigation wraps at either end.", {
       exact: true,
@@ -59,6 +62,8 @@ test("navigation buttons are fixed on empty pages", async ({ page }) => {
   ).toBeVisible();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await page.reload();
+  // Editor selection is local; saved manual selection still points to Home.
+  await editPage(page, "Page 2");
   await page.getByRole("button", { name: "Button 1", exact: true }).click();
   await expect(page.getByText("FIXED CONTROL", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Action", { exact: true })).toHaveCount(0);
@@ -89,12 +94,10 @@ test("edits a dial independently and persists a page across reload", async ({
   await expect(page.getByLabel("Label", { exact: true })).toHaveValue(
     "Volume −",
   );
-  await page.getByRole("button", { name: "Add page", exact: true }).click();
+  await usePageOption(page, "Add page");
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Page 2", exact: true }),
-  ).toBeVisible();
+  await expect(pageTab(page, "Page 2")).toHaveCount(1);
 });
 test("composes and reorders a workflow without silently running it in the browser", async ({
   page,
@@ -115,14 +118,17 @@ test("composes and reorders a workflow without silently running it in the browse
 });
 test("renders deck without browser errors and captures visual baseline", async ({
   page,
-}) => {
+}, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: "LCD 6: Play / pause" }),
   ).toBeVisible();
-  await page.screenshot({ path: "test-results/ui-deck.png", fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("ui-deck.png"),
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });
 test("whole-dial brightness assignment configures both rotations and clears stale values", async ({
@@ -184,55 +190,42 @@ test("deleting a page supports cancel, confirmation, save and last-page protecti
     name: "Delete page",
     exact: true,
   });
+  await expect(deleteButton).toBeVisible();
   await expect(deleteButton).toBeDisabled();
-  await page.getByRole("button", { name: "Add page", exact: true }).click();
+  await usePageOption(page, "Add page");
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
-  await deleteButton.click();
+  await usePageOption(page, "Delete page");
   const dialog = page.getByRole("dialog", { name: "Delete page “Page 2”?" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Page 2", exact: true }),
-  ).toBeVisible();
+  await expect(pageTab(page, "Page 2")).toHaveCount(1);
   await expect(
     page.getByRole("button", { name: "Save changes", exact: true }),
   ).toBeDisabled();
-  await deleteButton.click();
+  await usePageOption(page, "Delete page");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await deleteButton.click();
+  await usePageOption(page, "Delete page");
   await dialog
     .getByRole("button", { name: "Delete page", exact: true })
     .click();
-  await expect(
-    page.getByRole("button", { name: "Page 2", exact: true }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Home", exact: true }),
-  ).toHaveClass("selected");
+  await expect(pageTab(page, "Page 2")).toHaveCount(0);
+  await expect(pageTab(page, "Home")).toHaveAttribute("aria-selected", "true");
   await expect(
     page.getByRole("button", { name: "Save changes", exact: true }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Page 2", exact: true }),
-  ).toHaveCount(0);
+  await expect(pageTab(page, "Page 2")).toHaveCount(0);
+  await expect(deleteButton).toBeVisible();
   await expect(deleteButton).toBeDisabled();
 });
 
-test("Rename page is left of Delete page and supports cancel, Enter and save/reload", async ({
+test("visible Rename page supports cancel, Enter and save/reload", async ({
   page,
 }) => {
   await page.goto("/");
-  await expect(page.locator(".page-actions button")).toHaveText([
-    "Rename page",
-    "Delete page",
-  ]);
-  const rename = page
-    .locator(".page-actions")
-    .getByRole("button", { name: "Rename page", exact: true });
-  await rename.click();
+  await usePageOption(page, "Rename page");
   const dialog = page.getByRole("dialog", { name: "Rename page", exact: true });
   await expect(dialog.getByRole("textbox", { name: "Page name" })).toHaveValue(
     "Home",
@@ -242,33 +235,27 @@ test("Rename page is left of Delete page and supports cancel, Enter and save/rel
     dialog.getByRole("button", { name: "Rename page", exact: true }),
   ).toBeDisabled();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Home", exact: true }),
-  ).toBeVisible();
+  await expect(pageTab(page, "Home")).toHaveCount(1);
   await expect(
     page.getByRole("button", { name: "Save changes", exact: true }),
   ).toBeDisabled();
-  await rename.click();
+  await usePageOption(page, "Rename page");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
-  await rename.click();
+  await usePageOption(page, "Rename page");
   await dialog.getByRole("textbox", { name: "Page name" }).fill("My shortcuts");
   await dialog.getByRole("textbox", { name: "Page name" }).press("Enter");
-  await expect(
-    page.getByRole("button", { name: "My shortcuts", exact: true }),
-  ).toBeVisible();
+  await expect(pageTab(page, "My shortcuts")).toHaveCount(1);
   await page.getByRole("button", { name: "Save changes", exact: true }).click();
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "My shortcuts", exact: true }),
-  ).toBeVisible();
+  await expect(pageTab(page, "My shortcuts")).toHaveCount(1);
 });
 
 test("JSON import, save and export preserve pages and settings", async ({
   page,
 }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "Add page", exact: true }).click();
+  await usePageOption(page, "Add page");
   const firstDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const downloaded = await firstDownload;
@@ -297,9 +284,10 @@ test("JSON import, save and export preserve pages and settings", async ({
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(config)),
   });
-  await expect(
-    page.getByRole("button", { name: "Imported page", exact: true }),
-  ).toHaveClass(/selected/);
+  await expect(pageTab(page, "Imported page")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await expect(
     page.getByRole("button", { name: "Save changes" }),
   ).toBeEnabled();
@@ -312,18 +300,51 @@ test("JSON import, save and export preserve pages and settings", async ({
     buffer: Buffer.from("{}"),
   });
   await expect(page.getByRole("alert")).toContainText("Not an OpenStreamDeck");
-  await expect(
-    page.getByRole("button", { name: "Imported page", exact: true }),
-  ).toHaveClass(/selected/);
+  await expect(pageTab(page, "Imported page")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await page.getByRole("button", { name: "Save changes" }).click();
   await page.reload();
-  await expect(
-    page.getByRole("button", { name: "Imported page", exact: true }),
-  ).toHaveClass(/selected/);
+  await expect(pageTab(page, "Imported page")).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   const roundTripDownload = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const saved = await (await roundTripDownload).createReadStream();
   const savedChunks: Buffer[] = [];
   for await (const chunk of saved) savedChunks.push(Buffer.from(chunk));
   expect(JSON.parse(Buffer.concat(savedChunks).toString())).toEqual(config);
+});
+
+test("dragged Default page order survives save and reload", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await usePageOption(page, "Add page");
+  await editPage(page, "Home");
+  const target = pageTab(page, "Page 2");
+  const box = await target.boundingBox();
+  await pageTab(page, "Home").dragTo(target, {
+    targetPosition: { x: box!.width - 3, y: box!.height / 2 },
+  });
+  const tabs = page.getByRole("tablist", { name: "Pages" }).getByRole("tab");
+  await expect
+    .poll(async () =>
+      tabs.evaluateAll((items) =>
+        items.map((item) => item.getAttribute("aria-label")),
+      ),
+    )
+    .toEqual(["Page 2", "Home"]);
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await page.reload();
+  await expect
+    .poll(async () =>
+      tabs.evaluateAll((items) =>
+        items.map((item) => item.getAttribute("aria-label")),
+      ),
+    )
+    .toEqual(["Page 2", "Home"]);
+  await expect(pageTab(page, "Home")).toHaveAttribute("aria-selected", "true");
 });

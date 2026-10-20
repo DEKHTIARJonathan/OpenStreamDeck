@@ -26,6 +26,147 @@ validation.
 | Left-click opens GUI; right-click opens menu | `navigation::tests::left_tray_click_restores_or_recreates_window_without_changing_navigation`, `tray_click_propagates_foreground_failures`                                                                              | On macOS 2026-10-19, targeted OS mouse events on the live app's tray icon foregrounded the GUI with no menu on left-click; right-click exposed Open/Quit. Windows not run. Tauri does not support disabling left-click menus or tray click events on Linux; desktop panel behavior applies there |
 | Tabbed settings and provider editors         | `tests/settings.spec.ts`: keyboard tabs, minimum-window layout, cross-tab drafts, both toggles, save/reload, invalid sleep, save failure, every provider's credential routing/removal/failure and no secret persistence | Browser screenshots inspected at 1380×900 and 1060×720. Native Settings accessibility tree inspected in OpenStreamDeck 0.1.0 (debug, macOS arm64, attached N3 `5548:1001`); running OS application name confirmed as OpenStreamDeck                                                              |
 
+## Application-specific pages
+
+The native page coordinator selects the first saved page in an application
+context, or the designated Default fallback, without rewriting `active_page` on
+every focus event. Contexts are derived from the flat page collection; all
+unassociated pages belong to Default. The editor page is independent. Automated
+fixtures establish selection and boundary behavior; they do not certify
+foreground focus, N3 display completion, or a switching-latency target.
+
+| Surface                             | Automated evidence                                                                                                                                                                    | Native validation and remaining limits                                                                                                                                                                                                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Default, app and manual selection   | `page_context::tests`; frontend model/page-editor tests and browser page tests                                                                                                        | Actual Chrome → VS Code → unmatched-app sequence on the N3 remains unobserved for this change.                                                                                                                                                                                                                    |
+| Native lifecycle and query recovery | `foreground::tests::dropping_observer_stops_and_joins_owned_worker`, `observation_retries_recover_without_polling_healthy_applications`                                               | Guard cleanup and fake-clock retry policy; real notification delivery, tray-only operation and OS logout cycles remain separate acceptance checks.                                                                                                                                                                |
+| macOS bundle identity               | `foreground::macos::tests::bundle_identity_comes_from_native_metadata_not_its_display_name` uses a temporary bundle                                                                   | NSWorkspace notifications and initial foreground query implemented; Calculator/Finder activations observed on macOS 26.7.1 as described below. Other OS releases and full device switching remain unverified.                                                                                                     |
+| Windows executable identity         | `foreground::tests::windows_identity_is_exact_normalized_and_rejects_shared_hosts`; Windows-only `foreground::windows::tests::shortcut_identity_resolves_target_without_executing_it` | Native WinEvent hook, process lookup and COM shortcut resolver implemented; live Windows activation, protected processes, shortcut variants and cleanup need Windows validation. Shared/packaged hosts without an exact executable identity are explicitly unsupported.                                           |
+| Linux X11 application identity      | `foreground::tests::linux_picker_and_observer_share_exact_resource_class` covers missing, malformed, ambiguous and case-sensitive metadata                                            | Only local EWMH X11 with matching desktop `StartupWMClass` is supported. No title/launcher inference. Actual window-manager behavior remains unverified.                                                                                                                                                          |
+| X11 transport shutdown              | Linux-only `foreground::x11::tests::cancelled_x11_transport_stops_before_waiting_for_a_reply`, `x11_transport_reads_real_socket_data_without_a_display_server`                        | Offline Unix socket fixtures; connection establishment and protocol waits have deadlines and check cancellation. Connection fixtures also cover missing sockets and early cancellation; Linux-only cases cover saturated backlogs and abstract-address precedence. No live X11 server or remote display was used. |
+| Wayland and browser preview         | Explicit unavailable capability; manual page controls remain exposed                                                                                                                  | No compositor-specific Wayland foreground integration. XWayland visibility is not treated as whole-session support. Browser fixtures are not OS detection evidence.                                                                                                                                               |
+| Association picker atomicity        | `applications::association_tests` tests complete metadata, optional icon failure, missing target and invalid identity before icon lookup                                              | Association selection is separate from Open App binding changes. Missing icons do not prevent association; native app/icon coverage still varies by OS.                                                                                                                                                           |
+
+On 2026-10-20, an isolated harness on macOS arm64 compiled the actual X11
+adapter and ran four Unix socket tests successfully, including connection
+establishment and pre-connect cancellation/deadlines. The Linux-only
+saturated-backlog and abstract-address fixtures were not executed on this macOS
+host. A separate target check compiled the actual Windows adapter and its COM
+shortcut fixture for `x86_64-pc-windows-gnu`. These checks used production
+source files with minimal boundary types outside the checkout; they were not
+full Linux/Windows application builds or native desktop runs. The Windows
+fixture was compiled, not executed.
+
+A native observer-only probe on 2026-10-20 used OpenStreamDeck 0.1.0 debug
+library code from base revision `80068cf` plus these uncommitted changes, on
+macOS 26.7.1 arm64. It observed Calculator and Finder activations and confirmed
+restoration of the original foreground application without recording that
+application's identity. The final run measured 94 ms and 97 ms respectively from
+invoking `open` to receiving the observer callback, and 3 ms to stop the
+observer. These single samples include application activation overhead; they are
+not OS-event-to-HID or physical-display latency. The probe did not access USB or
+run a second OpenStreamDeck instance.
+
+The first standalone probe blocked its main thread while waiting and received
+only the initial query. Pumping the main CoreFoundation run loop, as the Tauri
+application does, allowed native notifications to arrive. The worker run loop
+alone is not sufficient in a standalone observer harness. No production observer
+change was needed for this harness correction. Closed-webview/tray operation and
+the full Chrome → VS Code → Default N3 sequence still require native acceptance.
+
+Automatic changes should be measured separately at detection, render and final
+HID submission. No 250 ms latency guarantee, physical pixel confirmation, or
+Windows/Linux run is implied by macOS local checks. Test reports below retain
+their original dates; configured CI jobs are not observed hosted runs.
+
+Application-page frame/input regressions in `device::context_frame_tests`
+exercise all six reconstructed LCD payloads, every control's captured page
+binding, full command queues, deferred sleep, discarded reconnect snapshots,
+overlay epochs and the transmitted agent-session identity. Applied overlays
+retain LCD session identities while all ordinary controls use the current
+underlying saved page, including edited bindings. A requested overlay retains
+displayed-page input until transmission succeeds. The shared frame transport
+fails before commit on injected write errors. Diagnostics restore the runtime
+target rather than the persisted manual page. These boundaries are tested
+without HID hardware; they do not establish a complete device-worker soak or
+physical input timing.
+
+`page_context::tests` also covers atomic manual persistence failure, automatic
+transitions without disk/backup writes, recovery from unavailable detection and
+requested versus confirmed overlay status.
+`overlay_requests_and_manual_selection_share_one_authoritative_mode` covers both
+serialized orders of manual selection and overlay requests using one mode field.
+Browser fixtures distinguish pending overlay transfer from the display last
+confirmed by the native worker.
+
+Application creation uses one dialog for the application, first-page name,
+Default fallback and automatic-switching preference. `src/page-editor.test.ts`
+covers atomic creation, preserving an existing Default and bindings, creating a
+fallback without removing app associations, and rejecting stale or invalid
+choices without mutation. `tests/application-pages.spec.ts` exercises the
+first-time flow, cancellation, duplicate contexts, missing identities, failed
+saves and retry through synthetic native boundaries. Delayed identity lookup
+preserves incoming native settings, active-page changes and added pages; a
+removed target remains deleted and leaves an error in the open picker. An
+imported application page with ID `new` can be reassociated without opening the
+creation flow.
+
+Application context buttons sit above a separate row of page tabs. The same
+browser suite covers adding subpages to the selected context, local editor
+selection independent of the device, same-named pages in different contexts,
+long names, keyboard selection, overflow, resizing and minimum-window layouts.
+Drag and keyboard reordering preserve other contexts and failed-save drafts, and
+save/reload keeps the order. Real mouse drags cover the blank leading space,
+inter-tab gaps, trailing space and the actual first position when the row is
+overflow-scrolled. Management-control targets and foreign-context drops do not
+reorder pages. Context reassociation and moving all its pages to Default are
+covered together. Deletion remains visibly red beside page tabs, protects the
+last Default page and removes a context when its final application page is
+deleted. Application options disclosure, keyboard dismissal and focus
+restoration remain covered. The page row exposes Add page, Rename page and
+Delete in order, with no page menu or Move left/Move right commands. Browser
+checks cover control order and visibility at desktop and minimum window widths,
+plus keyboard-opened rename. These fixtures establish editor behavior, not
+physical switching.
+
+The native window sets `dragDropEnabled: false` to let HTML page tabs receive
+drag/drop events. Tauri's default native file-drop interception consumes these
+events before the frontend receives them; the installed Wry macOS implementation
+routes `performDragOperation` through that handler as well.
+`navigation::tests::main_window_preserves_html_page_drag_and_drop` checks the
+production window configuration used for initial creation and tray recreation.
+This regression failed with the previous configuration. Browser drag tests alone
+do not cover Tauri's native event interception.
+
+`model::validation_tests::application_context_identity_is_an_exact_normalized_set_independent_of_metadata`
+covers complete normalized identity sets, repeated sets, duplicate identities
+and partial-overlap rejection. Native engine and page-context regressions cover
+scoped navigation with automatic switching enabled or disabled, explicit
+cross-context page IDs, first-child selection on distinct activation, manual
+child overrides during same-app events, reordered first pages, designated
+fallback independent of order, and save/reload. The relevant tests include
+`engine::tests::reserved_navigation_cycles_only_its_context_in_saved_order`,
+`page_context::tests::app_activation_enters_first_saved_child_and_reorder_preserves_manual_override`
+and
+`page_context::tests::saved_reordering_controls_scoped_navigation_after_reload`.
+On 2026-10-20, the reviewed application-pages worktree passed the complete Rust
+workspace suite with all targets and features (114 library tests and 2
+executable tests), all 80 frontend unit tests and all 58 Chromium browser tests
+on macOS arm64. Eight focused WebKit tests also passed, covering drag
+boundaries, overflow, cancellation, save/reload, asynchronous picker
+reconciliation and imported page identity. The production frontend build,
+standalone Rust formatting and Clippy checks passed. Desktop (1380×900) and
+minimum-window (1060×720) browser screenshots were inspected. Prek was
+intentionally excluded from this review. These checks add no physical N3 or live
+Windows/Linux evidence.
+
+After integration with the signed updater on 2026-10-20, the combined macOS
+build passed 140 library tests, 4 executable tests, 84 frontend unit tests and
+all 71 Chromium browser tests. The frontend production build and standalone
+Clippy also passed. This includes startup configuration preservation, updater
+workflows and page selection blocked during installation. Native tests used
+synthetic signing values and the resolved temporary target path because Tauri
+rejects symlinked executable paths.
+
 ## Action coverage
 
 `engine::tests::every_supported_action_success_and_precancel` iterates the
@@ -180,15 +321,18 @@ manual validation step.
 
 ## Fixed page-navigation controls
 
-Previous/Next (`button1`/`button2`) bypass page assignments and always cycle the
-configuration's pages, including empty pages. Bindings for reserved controls are
-stored but cannot override these controls. The GUI exposes a read-only inspector
-for them and explains the one-page case. All pages belong to a single
-collection.
+Previous/Next (`button1`/`button2`) bypass page assignments and cycle only pages
+in the current runtime page's context, including empty pages, in saved array
+order with wraparound. This remains true with automatic switching off. Explicit
+page-ID actions may cross contexts. Reserved bindings remain stored but cannot
+override navigation. The GUI exposes a read-only inspector and explains the
+one-page-context case. All pages remain in a single collection.
 
-`engine::tests::fixed_navigation_cycles_empty_pages_and_ignores_reserved_assignments`
-and `tests/pages.spec.ts` cover empty/new pages, read-only controls and reload.
-Physical navigation remains a separate manual validation step.
+`engine::tests::fixed_navigation_cycles_empty_pages_and_ignores_reserved_assignments`,
+`engine::tests::reserved_navigation_cycles_only_its_context_in_saved_order` and
+`tests/pages.spec.ts` cover empty/new pages, scope, reordered navigation,
+read-only controls and reload. Physical navigation remains a separate manual
+validation step.
 
 ## Configuration validation and persistence
 
@@ -205,12 +349,16 @@ uses the production startup loader with
 `unknown field page_switching` startup failure before the compatibility fix. It
 now verifies loading without rewriting the file, complete JSON preservation, an
 ordinary IPC/save/reload cycle and an unchanged original backup.
-Application-page metadata is retained without executing automatic switching in
-this build; the startup warning makes this limitation visible, including when OS
-login-registration inspection also fails. Frontend model/draft tests and
-`tests/pages.spec.ts` cover import, editing, save acknowledgement, reload and
-export without losing this metadata. These tests use temporary files and
-injected OS registration; they do not launch the native GUI.
+`updates::tests::native_page_selection_respects_installation_gate_and_recovers`
+also verifies manual page selection cannot persist configuration during an
+update and resumes normally when the installation gate is released.
+Application-page metadata is preserved as typed configuration and automatic
+switching is supported in this build. Startup no longer emits the
+compatibility-only unsupported-switching warning; OS login-registration errors
+remain visible. Frontend model/draft tests and `tests/pages.spec.ts` cover
+import, editing, save acknowledgement, reload and export without losing this
+metadata. These tests use temporary files and injected OS registration; they do
+not launch the native GUI.
 
 `tests/pages.spec.ts` also checks JSON download, import, save/reload and
 re-export through the browser UI, preserving the selected page and device
@@ -218,12 +366,20 @@ settings.
 
 ## Page deletion
 
-The named Delete page control beside the tabs opens a confirmation dialog.
-Deletion remains a draft until Save changes, selects a neighboring page, and
-cannot remove the last page. Existing links are reported and preserved for
-explicit retargeting. `src/page-editor.test.ts` covers selection, preservation,
-invalid/stale targets and hardware/draft concurrency; `tests/pages.spec.ts`
-covers cancel, Escape, confirmation and save/reload.
+The red Delete page control beside the page tabs opens a named confirmation
+dialog. Deletion remains a draft until Save changes and selects a neighbor in
+the same context. The final Default page is protected; deleting the designated
+fallback requires an ordinary replacement. Deleting the final application page
+removes its context and selects an ordinary page. Existing links are reported
+and preserved for explicit retargeting. `src/page-editor.test.ts` covers
+selection, preservation, invalid/stale targets and hardware/draft concurrency;
+`tests/pages.spec.ts` covers cancel, Escape, confirmation and save/reload.
+`tests/application-pages.spec.ts` also covers deleting the final application
+page and protecting the final Default page. Application deletion has a separate
+visible button, disabled for Default. Unit and browser tests cover cascading all
+pages in one exact context, named confirmation and page counts, Cancel/Escape,
+stale contexts, surviving links, other-context preservation, active selection,
+and failed-save drafts through concurrent native updates.
 
 ## Action results and errors
 
@@ -235,10 +391,10 @@ subscription, including repeated callbacks during React StrictMode setup.
 
 ## Page renaming
 
-A blue Rename page button sits immediately left of Delete page. Its dialog
-selects the existing name, supports Cancel/Escape and Enter, rejects blank
-names, and leaves the rename pending until Save changes. Page IDs, bindings and
-navigation targets stay intact. Helper and browser coverage is in
+Rename is available directly between Add page and Delete beside the page tabs.
+Its dialog selects the existing name, supports Cancel/Escape and Enter, rejects
+blank names, and leaves the rename pending until Save changes. Page IDs,
+bindings and navigation targets stay intact. Helper and browser coverage is in
 `src/page-editor.test.ts` and `tests/pages.spec.ts`.
 
 ## Updater preparation

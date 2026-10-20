@@ -135,12 +135,31 @@ impl WindowHost for NativeWindow<'_> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn main_window_preserves_html_page_drag_and_drop() {
+        // Startup and tray recreation both use this production window config.
+        // Tauri's native file-drop handler consumes drops before HTML tabs see
+        // them, including WKWebView's performDragOperation on macOS.
+        let config: tauri::utils::config::Config =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let main = config
+            .app
+            .windows
+            .iter()
+            .find(|window| window.label == "main")
+            .expect("main window configuration");
+        assert!(
+            !main.drag_drop_enabled,
+            "Native file-drop interception must be disabled for HTML page reordering"
+        );
+    }
+
     use super::*;
     use crate::model::Config;
     use std::{
         cell::{Cell, RefCell},
         path::PathBuf,
-        sync::{atomic::Ordering, mpsc::sync_channel},
+        sync::mpsc::sync_channel,
     };
 
     struct Window<'a> {
@@ -237,7 +256,7 @@ mod tests {
                 ]
             );
             assert_eq!(*state.navigation.lock().unwrap(), navigation);
-            assert!(!state.agent_display.load(Ordering::Relaxed));
+            assert!(!state.page_context.lock().unwrap().overlay);
             assert!(rx.try_recv().is_err());
         }
     }
@@ -307,7 +326,7 @@ mod tests {
                     ]
                 );
                 assert_eq!(state.navigation.lock().unwrap().revision, revision);
-                assert!(!state.agent_display.load(Ordering::Relaxed));
+                assert!(!state.page_context.lock().unwrap().overlay);
                 assert!(
                     rx.try_recv().is_err(),
                     "dashboard must not send LCD commands"

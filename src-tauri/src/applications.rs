@@ -86,6 +86,53 @@ pub fn list() -> Vec<Application> {
     apps.dedup_by(|a, b| a.path == b.path);
     apps
 }
+/// Association selection is independent of Open App binding/artwork mutation.
+/// Identity failure rejects the entire selection; unavailable artwork is optional.
+pub async fn association(path: &str) -> Result<crate::model::ApplicationAssociation, String> {
+    let target = path.to_owned();
+    association_with(
+        async move {
+            tokio::task::spawn_blocking(move || crate::foreground::application_identity(&target))
+                .await
+                .map_err(|e| format!("Application identity lookup failed: {e}"))?
+        },
+        || {
+            list()
+                .into_iter()
+                .find(|app| app.path == path)
+                .map(|app| app.name)
+                .unwrap_or_else(|| {
+                    Path::new(path)
+                        .file_stem()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .into_owned()
+                })
+        },
+        || icon(path),
+    )
+    .await
+}
+async fn association_with<I, N, F, O>(
+    identity: I,
+    name: N,
+    icon: F,
+) -> Result<crate::model::ApplicationAssociation, String>
+where
+    I: std::future::Future<Output = Result<crate::model::ApplicationIdentity, String>>,
+    N: FnOnce() -> String,
+    F: FnOnce() -> O,
+    O: std::future::Future<Output = Result<String, String>>,
+{
+    let identity = identity.await?;
+    identity.validate()?;
+    Ok(crate::model::ApplicationAssociation {
+        name: name(),
+        identities: vec![identity],
+        image: icon().await.ok(),
+    })
+}
+
 pub async fn icon(path: &str) -> Result<String, String> {
     if !Path::new(path).exists() {
         return Err("Application no longer exists".into());
@@ -250,5 +297,60 @@ mod launch_tests {
         collect_shortcuts(dir.path(), 0, &mut apps);
         assert_eq!(apps.len(), 1);
         assert_eq!(apps[0].name, "Example");
+    }
+}
+
+#[cfg(test)]
+mod association_tests {
+    use super::*;
+    use crate::model::ApplicationIdentity;
+    fn identity() -> ApplicationIdentity {
+        ApplicationIdentity {
+            platform: "macos".into(),
+            value: "org.example.application".into(),
+        }
+    }
+    #[tokio::test]
+    async fn association_selection_returns_identity_name_and_optional_icon_together() {
+        let association = association_with(
+            async { Ok(identity()) },
+            || "Example".into(),
+            || async { Ok("data:image/png;base64,fixture".into()) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(association.name, "Example");
+        assert_eq!(association.identities, vec![identity()]);
+        assert!(association.image.is_some());
+        let association = association_with(
+            async { Ok(identity()) },
+            || "Example".into(),
+            || async { Err("Icon unavailable".into()) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(association.identities, vec![identity()]);
+        assert!(association.image.is_none());
+    }
+    #[tokio::test]
+    async fn failed_or_invalid_identity_does_not_request_icon_or_return_partial_selection() {
+        for identity in [
+            Err("Application no longer exists".into()),
+            Ok(ApplicationIdentity {
+                platform: "unknown".into(),
+                value: "bad".into(),
+            }),
+        ] {
+            let result = association_with(
+                async { identity },
+                || panic!("name lookup must not run"),
+                || async { panic!("icon lookup must not run") },
+            )
+            .await;
+            assert!(result.is_err());
+        }
+        assert!(association("/definitely-not-an-installed-app")
+            .await
+            .is_err());
     }
 }

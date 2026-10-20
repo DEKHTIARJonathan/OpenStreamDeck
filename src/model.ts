@@ -7,12 +7,46 @@ export interface Action {
   children: Action[];
   options: Record<string, string>;
 }
+export interface ApplicationIdentity {
+  platform: "macos" | "windows" | "linux";
+  value: string;
+}
+export interface PageApplication {
+  name: string;
+  identities: ApplicationIdentity[];
+  image?: string | null;
+}
+export function applicationIdentityKey(identity: ApplicationIdentity): string {
+  return JSON.stringify([
+    identity.platform,
+    identity.platform === "windows"
+      ? identity.value.replaceAll("/", "\\").toLowerCase()
+      : identity.value,
+  ]);
+}
+export function applicationContextKey(application: PageApplication): string {
+  return (
+    "application:" +
+    JSON.stringify(application.identities.map(applicationIdentityKey).sort())
+  );
+}
+export interface PageContext {
+  revision: number;
+  desired_page: string;
+  applied_page: string | null;
+  reason: "manual" | "application" | "default";
+  application: { name: string; identity: ApplicationIdentity } | null;
+  error: string | null;
+  automatic: boolean;
+  override_active: boolean;
+  overlay: boolean;
+  overlay_applied?: boolean;
+}
 export interface Page {
+  application?: PageApplication | null;
   id: string;
   name: string;
   bindings: Record<string, Action>;
-  /** Retained for other version-2 builds; this editor does not interpret it. */
-  application?: unknown;
 }
 export interface Workflow {
   id: string;
@@ -31,8 +65,7 @@ export interface Config {
   version: number;
   pages: Page[];
   active_page: string;
-  /** Retained for other version-2 builds; switching is unavailable here. */
-  page_switching?: unknown;
+  page_switching: { enabled: boolean; default_page: string | null };
   workflows: Workflow[];
   providers: Provider[];
   brightness: number;
@@ -80,6 +113,8 @@ export interface Navigation {
 }
 export interface Snapshot {
   update?: import("./UpdatePanel").UpdateStatus;
+  platform?: string;
+  page_context?: PageContext;
   navigation: Navigation;
   config: Config;
   device: Device;
@@ -157,6 +192,7 @@ export function defaultConfig(): Config {
     version: 2,
     pages: [{ id: "home", name: "Home", bindings }],
     active_page: "home",
+    page_switching: { enabled: false, default_page: null },
     brightness: 60,
     image_size: 64,
     rotation: 90,
@@ -255,6 +291,7 @@ export function validateConfig(value: unknown): Config {
   const w: Record<string, unknown> = {
     launch_at_login: false,
     menu_bar_only: true,
+    page_switching: { enabled: false, default_page: null },
     ...object(value, "config"),
   };
   if (
@@ -272,6 +309,62 @@ export function validateConfig(value: unknown): Config {
     Object.values(object(page.bindings, "page bindings")).forEach((a) =>
       checkAction(a),
     );
+  }
+  const switching = object(w.page_switching, "page switching");
+  if (typeof switching.enabled !== "boolean")
+    throw new Error("Invalid automatic page switching");
+  if (switching.default_page !== null)
+    text(switching.default_page, "Default page");
+  const defaultPage = w.pages.find(
+    (value) => object(value, "page").id === switching.default_page,
+  ) as Record<string, unknown> | undefined;
+  if (switching.default_page !== null && !defaultPage)
+    throw new Error("Default page is missing");
+  if (switching.enabled && !defaultPage)
+    throw new Error(
+      "Choose a Default page before enabling automatic switching",
+    );
+  if (defaultPage?.application)
+    throw new Error("Default page cannot have an application association");
+  const identities = new Map<string, string>();
+  for (const value of w.pages) {
+    const page = object(value, "page");
+    if (page.application == null) continue;
+    const app = object(page.application, "page application");
+    const name = text(app.name, "application name");
+    if (!name.trim() || new TextEncoder().encode(name).length > 512)
+      throw new Error("Invalid application name");
+    if (
+      app.image != null &&
+      (typeof app.image !== "string" || app.image.length > 8000000)
+    )
+      throw new Error("Invalid application image");
+    const matches = array(app.identities, "application identities");
+    if (!matches.length || matches.length > 16)
+      throw new Error("Invalid application identities");
+    const local = new Set<string>();
+    for (const match of matches) {
+      const identity = object(match, "application identity");
+      const platform = text(identity.platform, "application platform");
+      const value = text(identity.value, "application identity");
+      if (
+        !["macos", "windows", "linux"].includes(platform) ||
+        !value.trim() ||
+        value !== value.trim() ||
+        new TextEncoder().encode(value).length > 4096 ||
+        /[\x00-\x1f\x7f]/.test(value)
+      )
+        throw new Error("Invalid application identity");
+      const key = `${platform}:${platform === "windows" ? value.replaceAll("/", "\\").toLowerCase() : value}`;
+      if (local.has(key)) throw new Error("Duplicate application identity");
+      local.add(key);
+    }
+    const context = JSON.stringify([...local].sort());
+    for (const key of local) {
+      if (identities.has(key) && identities.get(key) !== context)
+        throw new Error("Application contexts have overlapping identities");
+      identities.set(key, context);
+    }
   }
   const workflows = array(w.workflows, "workflows");
   unique(workflows, "Workflow");

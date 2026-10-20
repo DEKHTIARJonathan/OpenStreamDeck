@@ -68,15 +68,33 @@ pub fn switch_page(w: &mut Config, value: &str) -> Result<(), String> {
         .position(|p| p.id == w.active_page)
         .ok_or("Active page not found")?;
     let next = match value {
-        "next" => (index + 1) % w.pages.len(),
-        "previous" => (index + w.pages.len() - 1) % w.pages.len(),
+        "next" | "previous" => {
+            let context = w.pages[index].context_key();
+            let pages: Vec<_> = w
+                .pages
+                .iter()
+                .filter(|page| page.context_key() == context)
+                .collect();
+            let current = pages
+                .iter()
+                .position(|page| page.id == w.active_page)
+                .ok_or("Active page context not found")?;
+            let next = if value == "next" {
+                (current + 1) % pages.len()
+            } else {
+                (current + pages.len() - 1) % pages.len()
+            };
+            pages[next].id.clone()
+        }
         _ => w
             .pages
             .iter()
-            .position(|p| p.id == value)
-            .ok_or("Page not found")?,
+            .find(|page| page.id == value)
+            .ok_or("Page not found")?
+            .id
+            .clone(),
     };
-    w.active_page = w.pages[next].id.clone();
+    w.active_page = next;
     Ok(())
 }
 pub fn validate(a: &Action, w: &Config) -> Result<(), String> {
@@ -383,6 +401,116 @@ mod tests {
         )
         .await
         .is_err());
+    }
+
+    #[tokio::test]
+    async fn reserved_navigation_cycles_only_its_context_in_saved_order() {
+        let host = Fake::new();
+        let make_page = |id: &str, application: Option<&str>| Page {
+            id: id.into(),
+            name: id.into(),
+            bindings: std::collections::BTreeMap::from([
+                ("button1".into(), example("shell")),
+                ("button2".into(), example("shell")),
+            ]),
+            application: application.map(|value| ApplicationAssociation {
+                name: value.into(),
+                image: None,
+                identities: vec![ApplicationIdentity {
+                    platform: "macos".into(),
+                    value: value.into(),
+                }],
+            }),
+        };
+        {
+            let mut config = host.w.lock().unwrap();
+            config.pages = vec![
+                make_page("home", None),
+                make_page("chrome-main", Some("chrome")),
+                make_page("utilities", None),
+                make_page("code-main", Some("code")),
+                make_page("chrome-tools", Some("chrome")),
+                make_page("chrome-debug", Some("chrome")),
+            ];
+            config.page_switching = PageSwitching {
+                enabled: true,
+                default_page: Some("home".into()),
+            };
+            config.active_page = "chrome-main".into();
+            config.validate().unwrap();
+        }
+        for enabled in [true, false] {
+            host.w.lock().unwrap().page_switching.enabled = enabled;
+            for (control, expected) in [
+                ("button2", "chrome-tools"),
+                ("button2", "chrome-debug"),
+                ("button2", "chrome-main"),
+                ("button1", "chrome-debug"),
+                ("button1", "chrome-tools"),
+                ("button1", "chrome-main"),
+            ] {
+                let action = crate::actions::control_action(&host.config(), control).unwrap();
+                assert_eq!(action.kind, "page");
+                execute(
+                    &host,
+                    &action,
+                    String::new(),
+                    &Arc::new(AtomicBool::new(false)),
+                    0,
+                )
+                .await
+                .unwrap();
+                assert_eq!(host.config().active_page, expected);
+            }
+        }
+        // Explicit targets may cross contexts; automatic page cycling may not.
+        let action = Action {
+            kind: "page".into(),
+            value: "home".into(),
+            ..Default::default()
+        };
+        execute(
+            &host,
+            &action,
+            String::new(),
+            &Arc::new(AtomicBool::new(false)),
+            0,
+        )
+        .await
+        .unwrap();
+        for (direction, expected) in [
+            ("next", "utilities"),
+            ("next", "home"),
+            ("previous", "utilities"),
+        ] {
+            switch_page(&mut host.w.lock().unwrap(), direction).unwrap();
+            assert_eq!(host.config().active_page, expected);
+        }
+        // Reorder only affects traversal; the current selected page remains valid.
+        {
+            let mut config = host.w.lock().unwrap();
+            config.pages.swap(1, 5);
+            switch_page(&mut config, "chrome-debug").unwrap();
+            switch_page(&mut config, "next").unwrap();
+            assert_eq!(config.active_page, "chrome-tools");
+            switch_page(&mut config, "previous").unwrap();
+            assert_eq!(config.active_page, "chrome-debug");
+            switch_page(&mut config, "code-main").unwrap();
+            for direction in ["next", "previous"] {
+                switch_page(&mut config, direction).unwrap();
+                assert_eq!(config.active_page, "code-main");
+            }
+            assert!(switch_page(&mut config, "missing").is_err());
+            assert_eq!(config.active_page, "code-main");
+            config.active_page = "stale".into();
+            assert!(switch_page(&mut config, "next")
+                .unwrap_err()
+                .contains("Active page"));
+            config.pages.clear();
+            assert!(switch_page(&mut config, "previous")
+                .unwrap_err()
+                .contains("no pages"));
+        }
     }
 
     #[tokio::test]

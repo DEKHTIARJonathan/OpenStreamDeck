@@ -39,30 +39,69 @@ pub(crate) fn control_action(config: &Config, control: &str) -> Option<Action> {
     fixed_navigation_action(control).or_else(|| config.page()?.bindings.get(control).cloned())
 }
 
-pub async fn trigger_control(app: tauri::AppHandle, control: String) {
-    let state = app.state::<AppState>();
-    if state.agent_display.load(Ordering::Relaxed) && control.starts_with("lcd") {
+pub enum CapturedTrigger {
+    Agent(AgentSession),
+    Action {
+        action: Action,
+        control: String,
+        page: String,
+    },
+    None,
+}
+
+/// Called synchronously by the serialized input worker against the frame that
+/// completed transmission. Async execution must never choose a different binding.
+pub fn capture_control(
+    config: &Config,
+    overlay: Option<&[AgentSession]>,
+    control: &str,
+) -> CapturedTrigger {
+    if let Some(agents) = overlay.filter(|_| control.starts_with("lcd")) {
         if let Ok(n) = control[3..].parse::<usize>() {
-            let s = {
-                let agents = state.agents.lock().unwrap();
-                let selected = *state.selected_agent.lock().unwrap();
-                agents.get((selected / 6) * 6 + n - 1).cloned()
-            };
+            let s = n.checked_sub(1).and_then(|n| agents.get(n)).cloned();
             if let Some(s) = s {
-                if let Err(error) = crate::agents::focus(&s).await {
-                    let _ = app.emit("action_error", format!("Focus {}: {error}", s.title));
-                }
+                return CapturedTrigger::Agent(s);
             }
-            return;
+            return CapturedTrigger::None;
         }
     }
-    let action = control_action(&state.config.lock().unwrap(), &control);
-    if let Some(a) = action {
-        start(app, a, control).await;
+    match control_action(config, control) {
+        Some(action) => CapturedTrigger::Action {
+            action,
+            control: control.into(),
+            page: config.active_page.clone(),
+        },
+        None => CapturedTrigger::None,
     }
+}
+
+pub async fn dispatch_captured(app: tauri::AppHandle, trigger: CapturedTrigger) {
+    match trigger {
+        CapturedTrigger::Agent(session) => {
+            if let Err(error) = crate::agents::focus(&session).await {
+                let _ = app.emit("action_error", format!("Focus {}: {error}", session.title));
+            }
+        }
+        CapturedTrigger::Action {
+            action,
+            control,
+            page,
+        } => {
+            let action = fixed_navigation_action(&control).unwrap_or(action);
+            start_scoped(app, action, binding_identity(&page, &control)).await;
+        }
+        CapturedTrigger::None => {}
+    }
+}
+fn binding_identity(page: &str, control: &str) -> String {
+    // Imported page IDs may contain separators; encode the tuple without collisions.
+    serde_json::to_string(&(page, control)).expect("string tuple serialization")
 }
 pub async fn start(app: tauri::AppHandle, action: Action, binding: String) -> String {
     let action = fixed_navigation_action(&binding).unwrap_or(action);
+    start_scoped(app, action, binding).await
+}
+async fn start_scoped(app: tauri::AppHandle, action: Action, binding: String) -> String {
     let id = uuid::Uuid::new_v4().to_string();
     let cancel = Arc::new(AtomicBool::new(false));
     {
@@ -225,7 +264,7 @@ fn perform_effect<'a>(
         "brightness"=>{let n={let mut w=state.config.lock().unwrap();crate::store::update(&state.dir,&mut w,|next|{next.brightness=crate::engine::brightness(next.brightness,&value)?;Ok(())})?;let _=app.emit("config",w.clone());w.brightness};state.send(DeviceCommand::Brightness(n))?;Ok(input)},
         "sleep"=>{state.send(DeviceCommand::ToggleSleep)?;Ok(input)},
         "wake"=>{state.send(DeviceCommand::Sleep(false))?;Ok(input)},
-        "page"=>{state.agent_display.store(false,Ordering::Relaxed);let mut w=state.config.lock().unwrap();crate::store::update(&state.dir,&mut w,|next|crate::engine::switch_page(next,&value))?;let _=app.emit("config",w.clone());state.send(DeviceCommand::Redraw)?;Ok(input)},
+        "page"=>{crate::page_context::select(app,&value)?;Ok(input)},
         "agents"=>{crate::navigation::dashboard(&state,&crate::navigation::NativeWindow(app))?;Ok(input)},
         "agent_select"=>{let agents=state.agents.lock().unwrap();let count=agents.len();if count>0{let mut n=state.selected_agent.lock().unwrap();*n=if value=="previous"{(*n+count-1)%count}else{(*n+1)%count};let _=app.emit("agent-selected",*n);}Ok(input)},
         "agent_focus"|"agent_prompt"=>{let s={let agents=state.agents.lock().unwrap();let n=*state.selected_agent.lock().unwrap();agents.get(n).cloned().ok_or("No agent selected")?};if a.kind=="agent_focus"{crate::agents::focus(&s).await?}else{crate::agents::prompt(&s,&value).await?}Ok(input)},
@@ -467,6 +506,23 @@ fn send_input(device: &mut dyn InputDevice, kind: &str, value: &str) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn job_identity_separates_pages_controls_and_imported_delimiters() {
+        assert_ne!(
+            binding_identity("chrome", "lcd1"),
+            binding_identity("code", "lcd1")
+        );
+        assert_ne!(
+            binding_identity("chrome", "lcd1"),
+            binding_identity("chrome", "lcd2")
+        );
+        assert_ne!(binding_identity("a:b", "c"), binding_identity("a", "b:c"));
+        assert_eq!(
+            binding_identity("chrome", "lcd1"),
+            binding_identity("chrome", "lcd1")
+        );
+    }
 
     fn launch_fixture(run: &str) -> AgentSession {
         AgentSession {

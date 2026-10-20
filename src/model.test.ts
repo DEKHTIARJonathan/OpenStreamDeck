@@ -89,3 +89,73 @@ it.each(["launch_at_login", "menu_bar_only"])("rejects malformed %s", (key) => {
       `Invalid ${key}`,
     );
 });
+
+describe("automatic application page configuration", () => {
+  const mapped = () => {
+    const w = defaultConfig();
+    w.page_switching = { enabled: true, default_page: "home" };
+    w.pages.push({
+      id: "chrome",
+      name: "Chrome",
+      bindings: {},
+      application: {
+        name: "Google Chrome",
+        identities: [{ platform: "macos", value: "com.google.Chrome" }],
+      },
+    });
+    return w;
+  };
+  it("defaults absent fields and round trips associations on foreign platforms", () => {
+    const old = { ...defaultConfig() } as Record<string, unknown>;
+    delete old.page_switching;
+    expect(validateConfig(old).page_switching).toEqual({
+      enabled: false,
+      default_page: null,
+    });
+    const w = mapped();
+    w.pages[1].application!.identities.push(
+      { platform: "windows", value: "C:\\Apps\\Chrome.exe" },
+      { platform: "linux", value: "wmclass:Google-chrome" },
+    );
+    expect(validateConfig(JSON.parse(JSON.stringify(w)))).toEqual(w);
+  });
+  it("requires a valid unassociated Default, including disabled stale references", () => {
+    const w = mapped();
+    w.page_switching.default_page = null;
+    expect(() => validateConfig(w)).toThrow("Default page");
+    w.page_switching = { enabled: false, default_page: "missing" };
+    expect(() => validateConfig(w)).toThrow("Default page is missing");
+    w.page_switching.default_page = "chrome";
+    expect(() => validateConfig(w)).toThrow("cannot have an application");
+  });
+  it("rejects duplicate and malformed identities while preserving unknown actions", () => {
+    const w = mapped();
+    w.pages.push({ ...structuredClone(w.pages[1]), id: "duplicate" });
+    expect(validateConfig(w).pages).toHaveLength(3);
+    w.pages[2].application!.identities.push({
+      platform: "linux",
+      value: "wmclass:Chrome",
+    });
+    expect(() => validateConfig(w)).toThrow("overlapping identities");
+    w.pages.pop();
+    w.pages[1].application!.identities.push({
+      ...w.pages[1].application!.identities[0],
+    });
+    expect(() => validateConfig(w)).toThrow("Duplicate application identity");
+    w.pages[1].application!.identities.pop();
+    w.pages[1].application!.identities[0].value = "bad\nidentity";
+    expect(() => validateConfig(w)).toThrow("Invalid application identity");
+    w.pages[1].application!.identities = [];
+    expect(() => validateConfig(w)).toThrow("Invalid application identities");
+    w.pages[1].application!.identities = [
+      { platform: "macos", value: "com.google.Chrome" },
+    ];
+    w.pages[1].bindings.lcd1 = {
+      ...w.pages[0].bindings.lcd1,
+      kind: "custom.extension",
+    };
+    expect(validateConfig(w).pages[1].bindings.lcd1.kind).toBe(
+      "custom.extension",
+    );
+  });
+});

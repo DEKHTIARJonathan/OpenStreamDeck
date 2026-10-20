@@ -33,13 +33,13 @@ describe("config draft concurrency", () => {
   it("preserves explicit local removal and accepts remote removal of optional fields", () => {
     const original = validateConfig(structuredClone(applicationPages));
     const pending = editConfig(receiveConfig(null, original), (draft) => {
-      delete draft.page_switching;
+      delete (draft as Partial<typeof draft>).page_switching;
     });
     expect(
       receiveConfig(pending, { ...original, brightness: 75 }).draft,
     ).not.toHaveProperty("page_switching");
     const remote = structuredClone(original);
-    delete remote.page_switching;
+    delete (remote as Partial<typeof remote>).page_switching;
     const clean = receiveConfig(receiveConfig(null, original), remote);
     expect(clean.draft).not.toHaveProperty("page_switching");
     expect(isDirty(clean)).toBe(false);

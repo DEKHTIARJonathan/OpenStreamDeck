@@ -26,12 +26,61 @@ Rust filenames above are relative to `src-tauri/src/`. The
 [protocol guide](PROTOCOL.md) describes transport details; the
 [verification matrix](TEST-MATRIX.md) links behavior to coverage and limits.
 
+`foreground.rs` and its platform modules observe the active application.
+`page_context.rs` owns transient page selection and revisioned display status.
+
 ## Configuration and persistence
 
 Configuration version 2 has one `pages` collection and `active_page`, plus
 workflows, provider configuration and device settings. Unsupported schemas are
 rejected without conversion. Unknown action kinds remain in imported data and
 fail explicitly if executed.
+
+Additive `page_switching` preferences select an optional Default fallback and
+enable automatic switching. Each page may hold an application association with
+platform-tagged identities; Default cannot also be application-specific. Missing
+new fields default to disabled/unassociated. Older binaries with strict schemas
+may reject exports containing these fields.
+
+A navigation context is derived from existing page metadata, not a new persisted
+container. All unassociated pages belong to Default. Application pages share a
+context only when their complete normalized identity sets are equal, independent
+of identity order, application display name or icon. Multiple pages may share
+that exact set. Repeated identities inside one association and partially
+overlapping sets across contexts are rejected, so a native identity never picks
+between competing application contexts.
+
+`engine::switch_page` filters the flat array to the current page's context for
+Previous/Next and preserves array order with wraparound. This scope also applies
+when automatic switching is disabled. An explicit page-ID action may cross
+contexts. A distinct foreground activation selects the first saved page in the
+matching application context; an unmatched application selects the designated
+Default page, regardless of its position. There is no persisted per-application
+last-page selection. Same-application activations retain a manual page override.
+
+The editor shows application context buttons above page tabs for the selected
+context. Drag reordering replaces only that context's occupied slots in the flat
+array, preserving other contexts, bindings, the fallback designation and
+`active_page`. Reordering stays in the draft until a successful save.
+Application reassociation or moving a context's pages to Default applies to all
+its pages together. The last ordinary page is protected; deleting the designated
+fallback requires an ordinary replacement. The editor may remember a selected
+child locally without changing the native first-page activation policy.
+
+`active_page` remains the persisted manual selection. `page_context` maintains
+the current foreground application, desired page, last successfully transmitted
+page, selection reason and monotonic revision in memory. It emits `page-context`
+events without writing configuration. An explicit manual selection persists
+normally and overrides automatic selection until the next distinct application
+or Resume automatic. The editor selects its own page independently and resolves
+live names from saved configuration, preserving pending edits.
+
+The native observer lives with the process, including while the webview is
+closed. macOS uses NSWorkspace notifications, Windows foreground events use
+executable identity, and local X11 uses active-window and exact resource-class
+metadata. Wayland detection is explicitly unavailable. See the
+[application-page guide](USAGE.md#application-specific-pages) for platform
+limits. No window titles or application-usage history are collected.
 
 The native data directory is shown in Settings. `config.json` is the current
 configuration; normal saves write and sync `config.tmp`, keep the previous file
@@ -71,6 +120,18 @@ The webview has no general-purpose shell/filesystem access and cannot issue raw
 USB reports. The device worker handles bounded queued commands and reconnects
 automatically. Raw USB tracing is opt-in with `OPENSTREAMDECK_USB_TRACE=1` and
 may contain private artwork; diagnostic logs belong in app data.
+
+The worker treats the desired page as a latest-state mailbox, so queue pressure
+does not discard the final application change. All six page frames and the input
+binding snapshot come from the same saved configuration. Rendering skips
+obsolete targets; applied status follows successful transfer, and bindings are
+captured before asynchronous action execution. Sleeping defers frames until
+wake. Agent-overlay frames carry a mode epoch so queued frames cannot overwrite
+a later explicit page selection. Overlay mode lives in `page_context`, shared by
+the producer and device worker. Once overlay frames are applied, LCD input uses
+the transmitted session identities and ordinary buttons/dials follow the current
+underlying saved page. A pending overlay still uses the previously transmitted
+page until the overlay transfer succeeds.
 
 ## Windows and agent state
 

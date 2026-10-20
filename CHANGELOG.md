@@ -9,8 +9,18 @@ details are intentionally omitted.
 ### Features
 
 - Self update mechanism added pulling updates from Github releases.
+- Application-specific pages automatically follow the foreground application,
+  with a Default fallback for applications without an assigned page.
+- Each application can have multiple pages, with Previous/Next navigation
+  cycling through that application's saved page order.
 
 ### UI/UX
+
+- Separate, aligned Applications and Pages rows make application contexts and
+  their pages easier to manage.
+- Drag and drop to reorder pages, with visible Add page, Rename page and Delete
+  controls. Deleting an application removes all its pages after confirmation;
+  Default is protected.
 
 ### Performance
 
@@ -18,6 +28,9 @@ details are intentionally omitted.
 
 - Keep saved page settings intact when opening configurations from another
   build.
+- Preserve newer configuration changes while an application lookup is pending.
+- Keep ordinary buttons and dials on the current application's bindings while
+  the Agents overlay is displayed.
 
 ## v0.1.0 - 2026-10-20
 

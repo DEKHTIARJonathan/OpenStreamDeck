@@ -3107,12 +3107,16 @@ dependencies = [
  "arboard",
  "base64 0.23.1",
  "dotenvy",
+ "block2",
  "enigo",
  "futures-util",
  "hidapi",
  "image",
  "keyring",
  "libc",
+ "objc2",
+ "objc2-app-kit",
+ "objc2-foundation",
  "open",
  "reqwest",
  "resvg",
@@ -3129,7 +3133,10 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "uuid",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
+ "x11rb",
+ "x11rb-protocol",
 ]
 
 [[package]]

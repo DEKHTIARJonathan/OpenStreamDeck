@@ -516,6 +516,41 @@ fn native_save_rejects_installation_before_touching_login_or_configuration() {
     );
 }
 
+#[test]
+fn native_page_selection_respects_installation_gate_and_recovers() {
+    let dir = tempfile::tempdir().unwrap();
+    let (tx, _rx) = std::sync::mpsc::sync_channel(4);
+    let mut initial = crate::model::Config::default();
+    let mut second = initial.pages[0].clone();
+    second.id = "second".into();
+    initial.pages.push(second);
+    crate::store::save(dir.path(), &initial).unwrap();
+    let saved = std::fs::read(dir.path().join("config.json")).unwrap();
+    let state = crate::AppState::new(dir.path().to_owned(), initial, tx);
+    state.begin_update_install().unwrap();
+    assert!(crate::page_context::select_state(&state, "second")
+        .unwrap_err()
+        .contains("update is in progress"));
+    assert_eq!(
+        std::fs::read(dir.path().join("config.json")).unwrap(),
+        saved
+    );
+    assert!(!dir.path().join("config.backup.json").exists());
+    assert_eq!(state.config.lock().unwrap().active_page, "home");
+    assert_eq!(state.page_context.lock().unwrap().desired_page, "home");
+    state.update_installing.store(false, Ordering::SeqCst);
+    crate::page_context::select_state(&state, "second").unwrap();
+    assert_eq!(
+        crate::store::load(dir.path()).unwrap().active_page,
+        "second"
+    );
+    assert_eq!(state.page_context.lock().unwrap().desired_page, "second");
+    assert_eq!(
+        std::fs::read(dir.path().join("config.backup.json")).unwrap(),
+        saved
+    );
+}
+
 #[tokio::test]
 async fn production_transport_rejects_plain_http() {
     let app = app();

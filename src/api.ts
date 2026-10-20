@@ -19,6 +19,18 @@ export async function call<T = void>(
       : defaultConfig();
     return {
       navigation: { view: "Deck", revision: 0 },
+      page_context: {
+        revision: 0,
+        desired_page: config.active_page,
+        applied_page: null,
+        reason: "manual",
+        application: null,
+        error:
+          "Browser preview · Application detection is available in the desktop app.",
+        automatic: false,
+        override_active: false,
+        overlay: false,
+      },
       config,
       device: {
         connected: false,

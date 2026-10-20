@@ -371,7 +371,10 @@ launch target, name and full-key native icon together; never require manual path
 entry or a separate icon upload for the normal flow. Keep URL/custom targets as
 an optional advanced path. Extract OS icons using structured arguments, never
 interpolate an application path into shell/script code. Test missing apps,
-extraction failures and atomic selection updates.
+extraction failures and atomic selection updates. Async picker completion must
+apply to the latest editor state while retaining the captured target. Native
+updates during lookup must survive; deleted targets must fail visibly without
+restoring an old configuration or dismissing the draft.
 
 ### Agent dashboard
 
@@ -395,13 +398,80 @@ controls and release variants through the production input-routing policy.
 
 ### Pages and configuration
 
+Keep one flat page collection. Derive contexts from page metadata: all
+unassociated pages belong to Default, and application pages share a context only
+when their complete normalized identity sets are equal. Identity order, names
+and icons do not affect grouping. Allow repeated exact sets across pages; reject
+duplicate identities inside one association and partial overlaps between
+different sets. Do not introduce a persisted context, workspace or profile
+layer.
+
+Use two levels of direct navigation: Default/application context buttons, then
+the selected context's page tabs. Keep Add application visible beside contexts
+and Add page, Rename page and a red Delete control in that order beside page
+tabs. Do not add a page overflow menu or Move left/Move right commands; pages
+reorder by drag and drop, with Alt+Shift+Arrow keys as a keyboard alternative.
+Keep `dragDropEnabled: false` in the native window configuration so Tauri's
+file-drop handler does not consume HTML page-tab drops. Cover this production
+configuration in native tests; Chromium drag tests alone do not establish
+dragging in the desktop webview. Window recreation must use the same setting.
+Include a separate red Delete application button beside application controls,
+disabled for Default. Confirm the application name and cascade deletion through
+all its pages in one draft edit, preserving other contexts and reporting
+surviving links. Cover Cancel/Escape, stale contexts and failed saves. Use
+options for secondary management. Overflow scrolls with visible controls; do not
+replace navigation with dropdowns or repeated role cards. Support arrow keys and
+Home/End with one tab stop per selected row. Keep the page being edited separate
+from the page on the device. Live labels use saved configuration, and automatic
+foreground updates must neither erase drafts nor mark them dirty. Cover long
+labels, same-named pages in different contexts, overflow, keyboard dismissal and
+focus restoration.
+
+First-time Add application must combine application selection, first-page
+naming, Default fallback and the automatic-switching preference in one dialog.
+Create these draft changes atomically, preserve bindings and expose Save
+changes. Add page inherits the selected context's complete association. Changing
+an application or moving its pages to Default applies to the whole context.
+Cover cancellation, missing identities, duplicate contexts, stale fallback
+choices and failed saves without losing the draft.
+
+Drag reordering stays within a context and changes only that context's occupied
+slots in the flat array. Preserve other contexts, page IDs, bindings,
+`active_page` and the fallback designation. Provide keyboard movement and
+visible insertion feedback. Save the draft order before using it on the device.
+Cover both directions, boundaries, overflow, save failure, reload and navigation
+order.
+
+Rust observes application identity. A distinct application activation selects
+the first saved page in its matching context; unmatched applications select the
+designated Default. Do not remember the last runtime child per application.
+Automatic changes never persist `active_page` or rotate save backups. Explicit
+navigation temporarily overrides automatic selection until the foreground
+application changes or the user resumes it; same-application events preserve the
+override. Previous/Next cycles only the current runtime page's context in saved
+array order, even with automatic switching disabled. Explicit page-ID actions
+may cross contexts. Cover first-page activation after reorder, manual child
+overrides and fallback selection independently of Default's position.
+
+Device frames and input bindings must use the same saved page snapshot. Capture
+the binding before asynchronous execution; coalesce automatic updates to the
+latest target, defer them during sleep and restore the latest target on
+reconnect. The explicit Agents overlay takes priority without losing the
+underlying page target. An applied overlay retains its transmitted LCD session
+identities while ordinary buttons and dials use the current underlying saved
+page. Keep overlay mode in one authoritative native state; requesting an overlay
+does not change input ownership until its frames are transmitted. Test these
+policies through native injected boundaries and browser fixtures. Foreground
+capability varies by OS: report unavailable detection visibly and retain manual
+controls. Never infer physical display correctness from HID success.
+
 The Previous/Next hardware buttons (`button1`/`button2`) have fixed roles and
 must never be assignable. Resolve them before page bindings, including on empty
 or imported pages; imported assignments cannot override navigation. Keep their
-inspector read-only. Cycle all pages with wraparound; clearly explain that
-navigation needs more than one page. Preserve imported configuration data
-without executing those reserved-button assignments. Cover empty pages, imported
-overrides, wraparound and the read-only editor.
+inspector read-only. Wrap within the current page context; explain that
+navigation needs more than one page in that context. Preserve imported
+configuration data without executing those reserved-button assignments. Cover
+empty pages, imported overrides, wraparound and the read-only editor.
 
 Use one flat page collection with `pages` and `active_page`. Saving and JSON
 import/export operate on the app's page and settings configuration. Do not
@@ -420,10 +490,13 @@ public synthetic fixtures before fixing them, and assert subsequent saves retain
 the complete configuration and original backup.
 
 Page deletion must be visible beside the page tabs, confirm the named target,
-protect the last page and select a remaining neighbor. Apply it through the
-normal draft/save flow, preserving unrelated bindings and pending local edits.
-Report links to deleted pages without silently rewriting their targets. Cover
-cancel/Escape, stale targets, active-page selection and save/reload behavior.
+protect the last Default page and select a remaining neighbor in the same
+context. Deleting the last application page removes its derived context and
+selects an ordinary page. Deleting the designated fallback requires an explicit
+ordinary replacement. Apply deletion through the normal draft/save flow,
+preserving unrelated bindings and pending local edits. Report links to deleted
+pages without silently rewriting their targets. Cover cancel/Escape, stale
+targets, active-page selection and save/reload behavior.
 
 ### Transient execution state
 

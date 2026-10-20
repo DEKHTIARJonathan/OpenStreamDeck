@@ -30,21 +30,13 @@ pub(crate) fn load(
 ) -> Result<(Config, Option<String>), String> {
     let mut config = store::load(dir)?;
     // Read-only: respect login-item changes made outside OpenStreamDeck.
-    let mut error = match login.is_enabled() {
+    let error = match login.is_enabled() {
         Ok(enabled) => {
             config.launch_at_login = enabled;
             None
         }
         Err(error) => Some(format!("Could not read launch at login: {error}")),
     };
-    if config.page_switching.is_some() || config.pages.iter().any(|page| page.application.is_some())
-    {
-        let warning = "Application-based page switching is unavailable in this build. Your saved page-switching settings and application associations are preserved.";
-        error = Some(match error {
-            Some(error) => format!("{error}. {warning}"),
-            None => warning.into(),
-        });
-    }
     Ok((config, error))
 }
 
@@ -175,7 +167,7 @@ mod tests {
 
         let (mut current, warning) = load(dir.path(), &login)
             .expect("startup must accept saved version-2 application-page settings");
-        assert!(warning.unwrap().contains("page switching is unavailable"));
+        assert!(warning.is_none());
         assert_eq!(std::fs::read(&path).unwrap(), bytes);
         assert_eq!(serde_json::to_value(&current).unwrap(), original);
         assert!(login.writes.borrow().is_empty());
@@ -195,7 +187,7 @@ mod tests {
         let (_, warning) = load(dir.path(), &login).unwrap();
         let warning = warning.unwrap();
         assert!(warning.contains("Could not read launch at login"));
-        assert!(warning.contains("page switching is unavailable"));
+        assert!(!warning.contains("page switching is unavailable"));
     }
 
     #[test]

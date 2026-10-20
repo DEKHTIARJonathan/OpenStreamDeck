@@ -30,10 +30,75 @@ pub struct Page {
     pub id: String,
     pub name: String,
     pub bindings: BTreeMap<String, Action>,
-    // Preserve application associations written by another version-2 build.
-    // This build does not execute application-based page switching.
     #[serde(default)]
-    pub application: Option<serde_json::Value>,
+    pub application: Option<ApplicationAssociation>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(deny_unknown_fields)]
+pub struct ApplicationIdentity {
+    pub platform: String,
+    pub value: String,
+}
+impl ApplicationIdentity {
+    pub fn validate(&self) -> Result<(), String> {
+        if !["macos", "windows", "linux"].contains(&self.platform.as_str())
+            || self.value.trim().is_empty()
+            || self.value != self.value.trim()
+            || self.value.len() > 4096
+            || self.value.chars().any(char::is_control)
+        {
+            return Err("Invalid application identity".into());
+        }
+        Ok(())
+    }
+    pub fn key(&self) -> (String, String) {
+        // Windows paths are case insensitive; other native identities retain case.
+        let value = if self.platform == "windows" {
+            self.value.replace('/', "\\").to_lowercase()
+        } else {
+            self.value.clone()
+        };
+        (self.platform.clone(), value)
+    }
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ApplicationAssociation {
+    pub name: String,
+    pub identities: Vec<ApplicationIdentity>,
+    #[serde(default)]
+    pub image: Option<String>,
+}
+/// A context is an exact set of native identities, independent of its display
+/// name, icon, identity ordering, and the page's position in the flat collection.
+pub type ApplicationContextKey = Vec<(String, String)>;
+impl ApplicationAssociation {
+    pub fn context_key(&self) -> ApplicationContextKey {
+        let mut identities: Vec<_> = self
+            .identities
+            .iter()
+            .map(ApplicationIdentity::key)
+            .collect();
+        identities.sort();
+        identities
+    }
+}
+impl Page {
+    /// All unassociated pages share the ordinary/default navigation context.
+    pub fn context_key(&self) -> Option<ApplicationContextKey> {
+        self.application
+            .as_ref()
+            .map(ApplicationAssociation::context_key)
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PageSwitching {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub default_page: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Workflow {
@@ -56,8 +121,8 @@ pub struct Config {
     pub version: u32,
     pub pages: Vec<Page>,
     pub active_page: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub page_switching: Option<serde_json::Value>,
+    #[serde(default)]
+    pub page_switching: PageSwitching,
     pub workflows: Vec<Workflow>,
     pub providers: Vec<Provider>,
     pub brightness: u8,
@@ -118,7 +183,7 @@ impl Default for Config {
                 application: None,
             }],
             active_page: "home".into(),
-            page_switching: None,
+            page_switching: PageSwitching::default(),
             workflows: vec![Workflow {
                 id: "summarize".into(),
                 name: "Summarize clipboard".into(),
@@ -227,6 +292,7 @@ impl Config {
             Ok(())
         }
         let mut pages = std::collections::HashSet::new();
+        let mut identity_contexts = std::collections::HashMap::new();
         for page in &self.pages {
             if page.id.is_empty() || !pages.insert(&page.id) {
                 return Err("Page IDs must be nonempty and unique".into());
@@ -234,6 +300,49 @@ impl Config {
             for action in page.bindings.values() {
                 action_shape(action, 0, &mut action_count)?;
             }
+            if let Some(application) = &page.application {
+                if application.name.trim().is_empty()
+                    || application.name.len() > 512
+                    || application.identities.is_empty()
+                    || application.identities.len() > 16
+                    || application
+                        .image
+                        .as_ref()
+                        .is_some_and(|image| image.len() > 8_000_000)
+                {
+                    return Err("Invalid page application".into());
+                }
+                let context = application.context_key();
+                let mut local_identities = std::collections::HashSet::new();
+                for identity in &application.identities {
+                    identity.validate()?;
+                    let key = identity.key();
+                    if !local_identities.insert(key.clone()) {
+                        return Err("Application association repeats an identity".into());
+                    }
+                }
+                for key in local_identities {
+                    if identity_contexts
+                        .get(&key)
+                        .is_some_and(|existing| existing != &context)
+                    {
+                        return Err("Application contexts have partially overlapping identities; pages for the same application must use the same complete identity set".into());
+                    }
+                    identity_contexts.insert(key, context.clone());
+                }
+            }
+        }
+        if let Some(id) = &self.page_switching.default_page {
+            let page = self
+                .pages
+                .iter()
+                .find(|page| &page.id == id)
+                .ok_or("Default page does not exist")?;
+            if page.application.is_some() {
+                return Err("Default page cannot have an application association".into());
+            }
+        } else if self.page_switching.enabled {
+            return Err("Choose a Default page before enabling automatic switching".into());
         }
         let mut workflows = std::collections::HashSet::new();
         for workflow in &self.workflows {
@@ -299,6 +408,151 @@ pub fn now() -> u64 {
 #[cfg(test)]
 mod validation_tests {
     use super::*;
+    fn association(platform: &str, value: &str) -> ApplicationAssociation {
+        ApplicationAssociation {
+            name: "Fixture application".into(),
+            identities: vec![ApplicationIdentity {
+                platform: platform.into(),
+                value: value.into(),
+            }],
+            image: None,
+        }
+    }
+    #[test]
+    fn application_page_defaults_and_round_trip_preserve_extensions_and_foreign_ids() {
+        let mut original = serde_json::to_value(Config::default()).unwrap();
+        original.as_object_mut().unwrap().remove("page_switching");
+        original["pages"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("application");
+        let mut config = Config::decode(&serde_json::to_vec(&original).unwrap()).unwrap();
+        assert!(!config.page_switching.enabled);
+        assert!(config.pages[0].application.is_none());
+        config.pages.push(Page {
+            id: "chrome".into(),
+            name: "Chrome".into(),
+            bindings: BTreeMap::from([(
+                "lcd1".into(),
+                Action {
+                    kind: "vendor_extension".into(),
+                    value: "preserved".into(),
+                    ..Default::default()
+                },
+            )]),
+            application: Some(association("windows", "C:\\Apps\\Chrome.exe")),
+        });
+        config.page_switching = PageSwitching {
+            enabled: true,
+            default_page: Some("home".into()),
+        };
+        let bytes = serde_json::to_vec(&config).unwrap();
+        let decoded = Config::decode(&bytes).unwrap();
+        assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+    }
+    #[test]
+    fn invalid_application_configuration_is_rejected() {
+        let mut config = Config::default();
+        config.page_switching.enabled = true;
+        assert!(config.validate().unwrap_err().contains("Default"));
+        config.page_switching.default_page = Some("missing".into());
+        assert!(config.validate().is_err());
+        config.page_switching.default_page = Some("home".into());
+        config.pages[0].application = Some(association("macos", "com.example.Chrome"));
+        assert!(config.validate().unwrap_err().contains("association"));
+        config.page_switching = PageSwitching::default();
+        for identity in [
+            ApplicationIdentity {
+                platform: "unsupported".into(),
+                value: "x".into(),
+            },
+            ApplicationIdentity {
+                platform: "macos".into(),
+                value: " ".into(),
+            },
+            ApplicationIdentity {
+                platform: "macos".into(),
+                value: "id\nline".into(),
+            },
+            ApplicationIdentity {
+                platform: "macos".into(),
+                value: "x".repeat(4097),
+            },
+        ] {
+            config.pages[0].application.as_mut().unwrap().identities = vec![identity];
+            assert!(config.validate().is_err());
+        }
+        config.pages[0].application = Some(association("windows", "C:\\Apps\\Chrome.exe"));
+        let mut second = config.pages[0].clone();
+        second.id = "second".into();
+        second.application = Some(association("windows", "c:/apps/chrome.EXE"));
+        config.pages.push(second);
+        // Identical normalized associations are pages in the same context.
+        assert!(config.validate().is_ok());
+        config.pages[1]
+            .application
+            .as_mut()
+            .unwrap()
+            .identities
+            .push(ApplicationIdentity {
+                platform: "macos".into(),
+                value: "org.example.chrome".into(),
+            });
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("partially overlapping"));
+        config.pages.pop();
+        config.pages[0]
+            .application
+            .as_mut()
+            .unwrap()
+            .identities
+            .clear();
+        assert!(config.validate().is_err());
+    }
+    #[test]
+    fn application_context_identity_is_an_exact_normalized_set_independent_of_metadata() {
+        let mut config = Config::default();
+        let mut first = config.pages[0].clone();
+        first.id = "chrome-main".into();
+        let mut application = association("windows", "C:\\Apps\\Chrome.exe");
+        application.identities.push(ApplicationIdentity {
+            platform: "macos".into(),
+            value: "org.example.Chrome".into(),
+        });
+        first.application = Some(application);
+        let mut second = first.clone();
+        second.id = "chrome-tools".into();
+        second.name = "Tools".into();
+        let metadata = second.application.as_mut().unwrap();
+        metadata.name = "A different display name".into();
+        metadata.image = Some("data:image/png;base64,fixture".into());
+        metadata.identities.reverse();
+        metadata.identities[1].value = "c:/apps/chrome.EXE".into();
+        assert_eq!(first.context_key(), second.context_key());
+        config.pages.extend([first, second]);
+        config.page_switching = PageSwitching {
+            enabled: true,
+            default_page: Some("home".into()),
+        };
+        assert!(config.validate().is_ok());
+        let bytes = serde_json::to_vec(&config).unwrap();
+        let decoded = Config::decode(&bytes).unwrap();
+        assert_eq!(serde_json::to_vec(&decoded).unwrap(), bytes);
+        assert_ne!(
+            decoded.pages[0].context_key(),
+            decoded.pages[1].context_key()
+        );
+        // Duplicate identities inside a single association remain malformed.
+        let identities = &mut config.pages[2].application.as_mut().unwrap().identities;
+        identities.push(identities[0].clone());
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("repeats an identity"));
+    }
+
     #[test]
     fn rejects_duplicate_provider_and_workflow_identity() {
         let mut w = Config::default();

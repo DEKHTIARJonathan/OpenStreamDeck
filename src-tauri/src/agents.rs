@@ -191,10 +191,8 @@ pub async fn monitor(app: tauri::AppHandle) {
         }
         *state.adapter_errors.lock().unwrap() = errors;
         let _ = app.emit("agents", &list);
-        if state
-            .agent_display
-            .load(std::sync::atomic::Ordering::Relaxed)
-        {
+        let overlay = state.page_context.lock().unwrap().overlay;
+        if overlay {
             display(&app, &list);
         }
         tokio::time::sleep(std::time::Duration::from_secs(3)).await;
@@ -212,20 +210,28 @@ pub fn reconcile_selection(
 }
 pub fn display(app: &tauri::AppHandle, sessions: &[AgentSession]) {
     let state = app.state::<AppState>();
-    if !state.device.lock().unwrap().connected {
+    let device = state.device.lock().unwrap().clone();
+    if !device.connected || device.sleeping {
         return;
     }
-    let w = state.config.lock().unwrap().clone();
+    let (w, epoch) = {
+        let config = state.config.lock().unwrap();
+        let context = state.page_context.lock().unwrap();
+        (config.clone(), context.overlay_epoch)
+    };
     let selected = *state.selected_agent.lock().unwrap();
     let page = selected / 6;
-    let fingerprint = serde_json::to_string(
-        &sessions
+    let fingerprint = serde_json::to_string(&(
+        epoch,
+        w.image_size,
+        w.rotation,
+        sessions
             .iter()
             .skip(page * 6)
             .take(6)
             .map(|s| (&s.id, &s.title, &s.status))
             .collect::<Vec<_>>(),
-    )
+    ))
     .unwrap_or_default();
     {
         let old = state.agent_frame.lock().unwrap();
@@ -233,7 +239,7 @@ pub fn display(app: &tauri::AppHandle, sessions: &[AgentSession]) {
             return;
         }
     }
-    let mut complete = true;
+    let mut images = Vec::with_capacity(6);
     for i in 0..6 {
         let a = if let Some(s) = sessions.get(page * 6 + i) {
             Action {
@@ -257,21 +263,22 @@ pub fn display(app: &tauri::AppHandle, sessions: &[AgentSession]) {
         };
         match crate::device::render(&a, w.image_size, w.rotation) {
             Ok(bytes) => {
-                complete &= state
-                    .tx
-                    .try_send(crate::device::DeviceCommand::Image((i + 1) as u8, bytes))
-                    .is_ok();
+                images.push(bytes);
             }
             Err(error) => {
-                complete = false;
                 let _ = app.emit("action_error", format!("Agent artwork: {error}"));
+                return;
             }
         }
     }
-    // A full queue must be retried on the next monitor tick, not cached as sent.
-    if complete {
-        *state.agent_frame.lock().unwrap() = fingerprint;
-    }
+    // Only the worker caches successfully transmitted artwork. Enqueue success
+    // is not display success: sleep, mode changes or disconnect may reject it.
+    let _ = state.tx.try_send(crate::device::DeviceCommand::AgentFrame(
+        epoch,
+        images,
+        sessions.iter().skip(page * 6).take(6).cloned().collect(),
+        fingerprint,
+    ));
 }
 /// Loopback hook receiver. Token is generated at startup and stored only in local app data.
 pub async fn hook_server(app: tauri::AppHandle) {
